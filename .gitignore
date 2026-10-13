@@ -8,6 +8,7 @@ dist/
 
 # Tauri
 ui/dist/
+app/gen/
 
 # OS / editor
 .DS_Store

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Wynamp",
+  "version": "0.0.0",
+  "identifier": "org.reawynamp.wynamp",
+  "build": {
+    "frontendDist": "../ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ../ui && npm run dev",
+    "beforeBuildCommand": "cd ../ui && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Wynamp",
+        "width": 560,
+        "height": 380,
+        "minWidth": 400,
+        "minHeight": 280,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Music",
+    "shortDescription": "A compact, retro desktop audio player",
+    "publisher": "Wynamp contributors"
+  }
+}

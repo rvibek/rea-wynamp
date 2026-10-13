@@ -13,8 +13,9 @@ phase**, each independently useful, all green on CI before tagging.
 - **Pre-1.0 (v0.x)**: API and UI may change between minor versions; behavior
   listed as *Done* in an earlier phase stays working (phases are cumulative).
 - **Scope control**: later phases may be trimmed or deferred — never earlier ones.
-- **Repo launch**: the repository goes public when v0.1.0 content works
-  (end of Phase 1), so the first thing the world sees is a player that plays.
+- **Repo launch**: the repository goes public only once there is a **tangible,
+  working app with a DMG installer** — target: the v0.1.0 release at the end of
+  Phase 1. Until then development is local (CI config ships now, runs on push).
 
 ## Phase overview
 
@@ -71,14 +72,16 @@ _The working app: a real Winamp-style player for local files._
 - Drag & drop files/folders onto the window
 - Keyboard shortcuts: `Z X C V B`, Space, arrows (seek/volume)
 - Tauri 2 app + plain-TS frontend; retro dark theme (CSS variables)
+- First **macOS `.app` / `.dmg` installer** (Tauri bundler, original icon)
 - Tests: M3U/PLS parsing, library store
 
 **Definition of done**: install nothing but prerequisites → open a folder → gapless
-playback → edit and save a playlist → restart the app with library intact; CI green
-on all three OSes; build commands documented.
+playback → edit and save a playlist → restart the app with library intact; a DMG
+installs and launches the app; CI green on all three OSes; build commands
+documented.
 
-**Release**: GitHub repo goes **public**; tag `v0.1.0` (source release; installers
-arrive in v1.0.0).
+**Release**: GitHub repo goes **public**; tag `v0.1.0` with source + macOS DMG
+(Windows/Linux installers arrive in v1.0.0).
 
 **Known trade-ins**: no EQ/visualizer yet, no radio/Navidrome, no media keys.
 
@@ -170,8 +173,8 @@ _Platform integration, packaging, public launch._
 - Media controls & OS Now Playing via souvlaki (macOS media keys, Windows SMTC,
   Linux MPRIS) — `Platform::media_controls` implementation
 - System tray / menu-bar mini controls
-- Packaging: `.app`/`.dmg` (macOS first), documented path to `.msi` (Windows) and
-  `.AppImage`/`.deb` (Linux)
+- Packaging parity: first-class installers for Windows (`.msi`) and Linux
+  (`.AppImage`/`.deb`); macOS `.dmg` already ships since v0.1.0
 - Full test pass, error-message polish, tracing/logging review
 - README with screenshots, CONTRIBUTING finalized, per-platform **Known
   limitations** list, suggested next features

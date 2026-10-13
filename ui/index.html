@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wynamp</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="titlebar">
+        <span class="brand">WYNAMP</span>
+        <span id="status" class="status">loading…</span>
+      </header>
+      <main>
+        <p class="hint">
+          Phase 1 in progress — the player surface lands in the next step. See
+          ROADMAP.md.
+        </p>
+        <dl id="paths" class="paths" hidden>
+          <dt>data</dt><dd id="path-data"></dd>
+          <dt>config</dt><dd id="path-config"></dd>
+          <dt>cache</dt><dd id="path-cache"></dd>
+        </dl>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
