@@ -15,6 +15,8 @@ Wynamp is free and open source (MIT OR Apache-2.0), uses original visual assets 
 
 **Status: pre-alpha, in active development.** The playback engine (gapless, seek, volume/balance) and the player UI are working; packaging and the first tagged release come next. See **[ROADMAP.md](ROADMAP.md)** for the full release plan.
 
+![Wynamp playing a track — phosphor-green retro player UI](docs/screenshots/wynamp-player.png)
+
 ## Planned releases
 
 | Release | Theme                                              |
