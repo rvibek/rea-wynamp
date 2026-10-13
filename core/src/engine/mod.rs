@@ -82,6 +82,12 @@ impl EngineHandle {
     pub fn shutdown(&self) {
         let _ = self.tx.send(PlayerCommand::Shutdown);
     }
+
+    /// Split into the command sender (UI → engine) and event receiver
+    /// (engine → UI), e.g. to move the receiver into a forwarding thread.
+    pub fn into_parts(self) -> (Sender<PlayerCommand>, Receiver<PlayerEvent>) {
+        (self.tx, self.events)
+    }
 }
 
 /// Spawn the engine thread and return its handle.
