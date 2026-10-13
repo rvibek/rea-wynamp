@@ -8,3 +8,17 @@ publish = false
 
 [dependencies]
 thiserror = { workspace = true }
+serde = { workspace = true }
+symphonia = { version = "0.6", features = [
+    "mp3",
+    "aac",
+    "flac",
+    "wav",
+    "alac",
+    "vorbis",
+    "ogg",
+    "isomp4",
+    "aiff",
+    "pcm",
+] }
+cpal = "0.18"

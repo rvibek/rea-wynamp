@@ -9,7 +9,8 @@ license = "MIT OR Apache-2.0"
 # repository = added in Phase 1 when the public GitHub repo exists
 
 [workspace.dependencies]
-# Phase 0 shared dependencies. Later phases add Tauri, Symphonia, cpal,
-# rusqlite, reqwest, rustfft, keyring, souvlaki, etc.
+# Phase 0/1 shared dependencies. Later phases add Tauri, rusqlite, reqwest,
+# rustfft, keyring, souvlaki, etc.
 thiserror = "2"
 directories = "5"
+serde = { version = "1", features = ["derive"] }

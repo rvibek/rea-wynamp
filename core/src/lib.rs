@@ -4,6 +4,7 @@
 //! engine, playlist logic, library scanning, and DSP live here so they can be
 //! developed and tested headlessly. See `docs/ARCHITECTURE.md`.
 
+pub mod engine;
 pub mod error;
 pub mod models;
 pub mod playback;

@@ -6,10 +6,12 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::models::{PlayableItem, PlayerStatus, PlaylistEntry, RepeatMode};
 
 /// Requests sent to the playback engine thread.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlayerCommand {
     /// Decode and play a single item, replacing the queue with just it.
     PlayItem(PlayableItem),
@@ -64,7 +66,7 @@ pub enum PlayerCommand {
 }
 
 /// Notifications sent from the playback engine thread to the UI.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlayerEvent {
     /// Snapshot of engine state; emitted on change and periodically (~4 Hz)
     /// while playing so clocks and seek bars stay live.

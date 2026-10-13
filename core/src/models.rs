@@ -3,12 +3,14 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 /// A single playable thing, whatever its origin.
 ///
 /// The engine treats all variants uniformly: it resolves them to a stream of
 /// decoded PCM samples. `LocalFile` is handled from v0.1.0; the network
 /// variants arrive with their phases (v0.4.0 / v0.5.0).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PlayableItem {
     /// A file on the local filesystem.
     LocalFile { path: PathBuf },
@@ -39,7 +41,7 @@ impl PlayableItem {
 ///
 /// For local files this is filled from tags via `lofty`; for network sources
 /// it comes from API responses or stream headers.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TrackMeta {
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -65,7 +67,7 @@ impl TrackMeta {
 }
 
 /// One entry in a playlist or the play queue.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaylistEntry {
     pub item: PlayableItem,
     pub meta: TrackMeta,
@@ -118,7 +120,7 @@ impl PlaylistEntry {
 }
 
 /// An ordered, named list of tracks (playlists and the play queue).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Playlist {
     /// Database row id; `None` until persisted.
     pub id: Option<i64>,
@@ -159,7 +161,7 @@ impl Playlist {
 }
 
 /// Engine lifecycle state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum PlaybackState {
     #[default]
     Stopped,
@@ -170,7 +172,7 @@ pub enum PlaybackState {
 }
 
 /// What happens when the current track ends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum RepeatMode {
     #[default]
     Off,
@@ -184,7 +186,7 @@ pub enum RepeatMode {
 ///
 /// The engine emits these as [`crate::PlayerEvent::Status`] (a few times per
 /// second while playing); the UI treats them as the single source of truth.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlayerStatus {
     pub state: PlaybackState,
     pub current: Option<PlaylistEntry>,
