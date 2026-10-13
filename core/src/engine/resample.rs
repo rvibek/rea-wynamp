@@ -67,7 +67,7 @@ impl LinearResampler {
         if let Some(last) = self.last {
             frames.push(last);
         }
-        frames.extend(chunk.chunks_exact(2).map(|f| (f[0], f[1])));
+        frames.extend(chunk.as_chunks::<2>().0.iter().map(|f| (f[0], f[1])));
 
         let n = frames.len();
         if n < 2 {
