@@ -1,86 +1,410 @@
-/* Wynamp base styles — retro dark theme via CSS variables.
+/* Wynamp player — retro dark theme via CSS variables.
    Phase 2 layers skins/themes on the same variables. */
 
 :root {
-  --bg: #1b1b1f;
-  --panel: #2a2a30;
-  --panel-edge: #0d0d0f;
+  --bg: #131316;
+  --panel: #1e1e23;
+  --panel-hi: #2a2a31;
+  --panel-edge: #0a0a0c;
+  --inset: #0e0e11;
   --text: #d8d8dc;
   --text-dim: #8a8a92;
   --accent: #39ff14; /* classic phosphor green */
   --accent-dim: #1f8a0c;
+  --accent-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+  --danger: #ff5f56;
   --font-ui: "Helvetica Neue", Arial, sans-serif;
   --font-mono: "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html,
 body {
-  margin: 0;
   height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
   font-size: 13px;
   user-select: none;
+  overflow: hidden;
 }
 
 #app {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 340px;
 }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ── Title bar ─────────────────────────────────────────────────────────── */
 
 .titlebar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  background: linear-gradient(180deg, #34343c 0%, var(--panel) 100%);
+  padding: 7px 12px;
+  background: linear-gradient(180deg, var(--panel-hi) 0%, var(--panel) 100%);
   border-bottom: 1px solid var(--panel-edge);
+  -webkit-app-region: drag;
 }
 
 .brand {
   font-family: var(--font-mono);
   font-weight: 700;
-  letter-spacing: 3px;
+  letter-spacing: 4px;
+  font-size: 14px;
   color: var(--accent);
-  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 55%, transparent);
+  text-shadow: 0 0 8px var(--accent-glow);
 }
 
-.status {
+.titlebar-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: var(--text-dim);
+  border: 1px solid var(--panel-edge);
+  background: var(--inset);
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+.badge[data-state="Playing"] {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.badge[data-state="Paused"] {
+  color: #ffd23f;
+  border-color: #7a6210;
+}
+
+.version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* ── Display (sunken info panel) ───────────────────────────────────────── */
+
+.display {
+  margin: 10px 10px 0;
+  padding: 10px 12px 12px;
+  background: var(--inset);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.display-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.display-sub {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.display-sub span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#track-tech {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.marquee {
+  overflow: hidden;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  mask-image: linear-gradient(90deg, transparent, #000 4px, #000 calc(100% - 4px), transparent);
+}
+
+.marquee span {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent-glow);
+  padding-right: 2em;
+}
+
+.marquee.scrolling span {
+  animation: marquee 12s linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.clock {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.12);
+}
+
+.clock-sep {
+  color: var(--text-dim);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+#time-total {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* ── Seek bar ──────────────────────────────────────────────────────────── */
+
+.seek {
+  position: relative;
+  margin-top: 11px;
+  height: 14px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.seek-track {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: #050506;
+  border: 1px solid var(--panel-edge);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.seek-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.seek-knob {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  width: 9px;
+  height: 13px;
+  margin-left: -4px;
+  background: linear-gradient(180deg, #efeff2, #a8a8b0);
+  border: 1px solid var(--panel-edge);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* ── Controls row ──────────────────────────────────────────────────────── */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px;
+}
+
+.transport {
+  display: flex;
+  gap: 4px;
+}
+
+.btn {
+  min-width: 40px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+.btn:hover {
+  color: var(--accent);
+}
+
+.btn:active {
+  transform: translateY(1px);
+  background: var(--panel);
+}
+
+.btn-play {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.btn-open {
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 11px;
+  letter-spacing: 1px;
 }
 
-main {
-  padding: 14px;
+.toggles {
+  display: flex;
+  gap: 6px;
 }
 
-.hint {
-  color: var(--text-dim);
-  line-height: 1.5;
-}
-
-.paths {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 12px;
+.chip {
+  height: 26px;
+  padding: 0 9px;
   font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.paths dt {
-  color: var(--accent-dim);
-}
-
-.paths dd {
-  margin: 0;
+  font-size: 10px;
+  letter-spacing: 1px;
   color: var(--text-dim);
-  overflow-wrap: anywhere;
+  background: var(--inset);
+  border: 1px solid var(--panel-edge);
+  border-radius: 3px;
+}
+
+.chip.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 6px var(--accent-glow) inset;
+}
+
+.sliders {
+  display: flex;
+  gap: 14px;
+}
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.slider input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+/* ── Queue ─────────────────────────────────────────────────────────────── */
+
+.queue {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 10px 10px;
+  background: var(--inset);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.queue-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.queue-list li {
+  padding: 4px 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-list li:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.queue-list li.current {
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent-glow);
+}
+
+.queue-hint {
+  padding: 6px 12px;
+  font-size: 10px;
+  color: var(--text-dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* ── Toast ─────────────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-hi);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+}
+
+.toast[data-kind="error"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--panel-edge));
+}
+
+/* Scrollbars, subtly retro */
+.queue-list::-webkit-scrollbar {
+  width: 10px;
+}
+.queue-list::-webkit-scrollbar-track {
+  background: var(--inset);
+}
+.queue-list::-webkit-scrollbar-thumb {
+  background: var(--panel-hi);
+  border: 2px solid var(--inset);
+  border-radius: 5px;
 }

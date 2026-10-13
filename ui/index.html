@@ -9,19 +9,73 @@
     <div id="app">
       <header class="titlebar">
         <span class="brand">WYNAMP</span>
-        <span id="status" class="status">loading…</span>
+        <div class="titlebar-meta">
+          <span id="state-badge" class="badge">stopped</span>
+          <span id="version" class="version"></span>
+        </div>
       </header>
-      <main>
-        <p class="hint">
-          Phase 1 in progress — the player surface lands in the next step. See
-          ROADMAP.md.
-        </p>
-        <dl id="paths" class="paths" hidden>
-          <dt>data</dt><dd id="path-data"></dd>
-          <dt>config</dt><dd id="path-config"></dd>
-          <dt>cache</dt><dd id="path-cache"></dd>
-        </dl>
-      </main>
+
+      <section class="display" id="display">
+        <div class="display-row">
+          <div class="marquee" id="marquee">
+            <span id="track-title">No track — open some files</span>
+          </div>
+          <div class="clock">
+            <span id="time-elapsed">0:00</span>
+            <span class="clock-sep">/</span>
+            <span id="time-total">0:00</span>
+          </div>
+        </div>
+        <div class="display-row display-sub">
+          <span id="track-detail">—</span>
+          <span id="track-tech">-- kbps · -- kHz</span>
+        </div>
+        <div class="seek" id="seek" title="Click to seek">
+          <div class="seek-track">
+            <div class="seek-fill" id="seek-fill"></div>
+          </div>
+          <div class="seek-knob" id="seek-knob"></div>
+        </div>
+      </section>
+
+      <section class="controls">
+        <div class="transport">
+          <button class="btn" id="btn-prev" title="Previous (Z)">|◀</button>
+          <button class="btn btn-play" id="btn-play" title="Play (X)">▶</button>
+          <button class="btn" id="btn-pause" title="Pause (C)">▮▮</button>
+          <button class="btn" id="btn-stop" title="Stop (V)">■</button>
+          <button class="btn btn-next" id="btn-next" title="Next (B)">▶|</button>
+        </div>
+
+        <div class="toggles">
+          <button class="chip" id="chip-shuffle" title="Shuffle">SHUF</button>
+          <button class="chip" id="chip-repeat" title="Repeat: off / all / one">REP·OFF</button>
+        </div>
+
+        <div class="sliders">
+          <label class="slider">
+            <span>vol</span>
+            <input type="range" id="volume" min="0" max="100" value="100" />
+          </label>
+          <label class="slider">
+            <span>bal</span>
+            <input type="range" id="balance" min="-100" max="100" value="0" />
+          </label>
+        </div>
+
+        <button class="btn btn-open" id="btn-open" title="Open audio files">
+          OPEN…
+        </button>
+      </section>
+
+      <section class="queue">
+        <ul id="queue-list" class="queue-list"></ul>
+        <footer class="queue-hint">
+          Drop audio files anywhere · Space = play/pause · ←→ seek · ↑↓ volume
+        </footer>
+      </section>
+
+      <div id="toast" class="toast" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
