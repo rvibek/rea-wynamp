@@ -2,20 +2,27 @@
 
 > A compact, retro, fast desktop audio player inspired by the classic Winamp 2.x experience — written in Rust.
 
-**Status: pre-alpha.** Phase 0 (workspace foundation) is in place; the first playable release is **v0.1.0**. See **[ROADMAP.md](ROADMAP.md)** for the full release plan.
+## ⚠️ About this repository
+
+**This repository exists to test [REA](https://github.com/morluto/rea)** (Reverse Engineer Anything) — it is a hands-on playground for driving an agent-assisted reverse-engineering/development workflow.
+
+**Building this app is purely a learning exercise** — exploring Rust, Tauri, audio decoding, DSP, and cross-platform packaging by recreating the classic Winamp-style player experience. Expect rough edges; expect things to change.
 
 Wynamp is free and open source (MIT OR Apache-2.0), uses original visual assets and its own name. It is not affiliated with, endorsed by, or derived from Winamp or its trademarks.
+
+**Status: pre-alpha, in active development.** The playback engine (gapless, seek, volume/balance) and the player UI are working; packaging and the first tagged release come next. See **[ROADMAP.md](ROADMAP.md)** for the full release plan.
 
 ## Planned releases
 
 | Release | Theme                                              |
 | ------- | -------------------------------------------------- |
-| v0.1.0  | Local playback, playlists, library — first playable |
+| v0.1.0  | Local playback player + DMG — first playable       |
+| v0.1.1  | Playlist editor, M3U/PLS, folder scan, library     |
 | v0.2.0  | 10-band equalizer, spectrum analyzer, themes        |
 | v0.3.0  | Favorites across all sources                        |
 | v0.4.0  | Internet radio + Radio Browser                      |
 | v0.5.0  | Navidrome (Subsonic) streaming                      |
-| v1.0.0  | Media keys, tray, packaging, public release         |
+| v1.0.0  | Media keys, tray, installers, public launch         |
 
 ## Workspace
 
@@ -30,25 +37,37 @@ Wynamp is free and open source (MIT OR Apache-2.0), uses original visual assets 
 
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Building
+## Building & running
 
 ### Prerequisites
 
 - **Rust via [rustup](https://rustup.rs)** (required). A package-manager Rust (Homebrew, MSYS2, distro) can shadow rustup and break builds; `rustup default stable` should win in `PATH`.
-- **Phase 1+**: Node.js 20+ (Tauri frontend tooling).
-- Platform packages (Phase 1+, when Tauri and cpal land):
+- **Node.js 20+** (Tauri frontend tooling).
+- Platform packages:
   - **macOS**: Xcode Command Line Tools — `xcode-select --install`
   - **Linux (Debian/Ubuntu)**:
     `sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev libasound2-dev build-essential curl wget file`
   - **Windows**: MSVC Build Tools + WebView2 runtime
 
-### Build, test, run (Phase 0)
+### Run (development)
 
 ```sh
-cargo run -p rea-wynamp-app      # prints foundation info
+npm install --prefix ui     # once
+cd ui && npm run tauri dev  # window opens; TS/CSS hot-reloads
+```
+
+### Test / lint (same gates as CI)
+
+```sh
 cargo test --workspace
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+```
+
+### Play a file from the CLI (engine smoke test)
+
+```sh
+cargo run -p rea-wynamp-core --example play -- /path/to/song.mp3
 ```
 
 ## Contributing
