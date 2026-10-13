@@ -1,0 +1,75 @@
+name: Release
+
+# Pushing a tag like `v0.1.0` builds the macOS DMG and publishes a GitHub
+# Release with the DMG attached. Windows/Linux installers join in v1.0.0
+# (add jobs for `x86_64-pc-windows-msvc` and Linux targets then).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-macos:
+    name: Build DMG (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: universal
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix ui
+
+      - name: Build universal .app + .dmg
+        run: |
+          cd app
+          ../ui/node_modules/.bin/tauri build --target universal-apple-darwin
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp app/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/
+          ls -la dist
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          generate_release_notes: true
+          body: |
+            ### Install (macOS)
+
+            1. Download **Wynamp** `.dmg` below.
+            2. Open it and drag **Wynamp** to *Applications*.
+            3. First launch: right-click → **Open** (the build is unsigned —
+               Gatekeeper needs the one-time override).
+
+            Built as a universal binary (Apple Silicon + Intel).
+
+            ### About
+
+            Wynamp is a compact, retro desktop audio player inspired by the
+            classic Winamp 2.x experience, written in Rust + Tauri.
+            This project is a learning exercise and a testbed for
+            [REA](https://github.com/morluto/rea) — see the README for
+            details, known limitations, and build-from-source instructions.

@@ -1,5 +1,8 @@
 # Wynamp (REA)
 
+[![CI](https://github.com/rvibek/rea-wynamp/actions/workflows/ci.yml/badge.svg)](https://github.com/rvibek/rea-wynamp/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+
 > A compact, retro, fast desktop audio player inspired by the classic Winamp 2.x experience — written in Rust.
 
 ## ⚠️ About this repository
@@ -36,6 +39,21 @@ Wynamp is free and open source (MIT OR Apache-2.0), uses original visual assets 
 | (frontend)             | `ui/`         | HTML/CSS/TypeScript UI                                            |
 
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Install (macOS)
+
+Prebuilt universal DMG (Apple Silicon + Intel) ships on the
+[**Releases**](https://github.com/rvibek/rea-wynamp/releases) page:
+
+1. Download the `.dmg` from the latest release.
+2. Open it and drag **Wynamp** to *Applications*.
+3. First launch: right-click → **Open** — the build is **unsigned**, so
+   Gatekeeper needs this one-time override (no notarization yet; that needs a
+   paid Apple Developer account).
+
+Windows (`.msi`) and Linux (`.AppImage`) installers are planned for v1.0.0 —
+until then those platforms build from source (below). CI already compiles and
+tests every commit on all three OSes.
 
 ## Building & running
 

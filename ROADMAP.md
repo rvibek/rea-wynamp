@@ -13,21 +13,24 @@ phase**, each independently useful, all green on CI before tagging.
 - **Pre-1.0 (v0.x)**: API and UI may change between minor versions; behavior
   listed as *Done* in an earlier phase stays working (phases are cumulative).
 - **Scope control**: later phases may be trimmed or deferred — never earlier ones.
-- **Repo launch**: the repository goes public only once there is a **tangible,
-  working app with a DMG installer** — target: the v0.1.0 release at the end of
-  Phase 1. Until then development is local (CI config ships now, runs on push).
+- **Repo launch**: public since inception at `github.com/rvibek/rea-wynamp`
+  (CI green on all three OSes); the v0.1.0 release adds the first DMG asset.
+- **Tagged releases are automated**: pushing a `v*` tag runs
+  `.github/workflows/release.yml`, which builds the macOS DMG and attaches it
+  to a GitHub Release with notes.
 
 ## Phase overview
 
-| Phase | Version  | Theme                                          | Status         |
-| ----- | -------- | ---------------------------------------------- | -------------- |
-| 0     | —        | Foundation: workspace, models, traits, CI, docs | ✅ Done        |
-| 1     | v0.1.0   | Local playback, playlists, library             | ⬜ Not started |
-| 2     | v0.2.0   | Equalizer, visualizer, panels, themes          | ⬜ Not started |
-| 3     | v0.3.0   | Favorites                                       | ⬜ Not started |
-| 4     | v0.4.0   | Internet radio + Radio Browser                 | ⬜ Not started |
-| 5     | v0.5.0   | Navidrome streaming                            | ⬜ Not started |
-| 6     | v1.0.0   | Media keys, tray, packaging, public launch     | ⬜ Not started |
+| Phase | Version | Theme                                               | Status         |
+| ----- | ------- | --------------------------------------------------- | -------------- |
+| 0     | —       | Foundation: workspace, models, traits, CI, docs      | ✅ Done        |
+| 1     | v0.1.0  | Playback engine + player UI + macOS DMG             | 🟡 In progress |
+| 1b    | v0.1.1  | Playlist editor, M3U/PLS, folder scan, SQLite library | ⬜ Not started |
+| 2     | v0.2.0  | Equalizer, visualizer, panels, themes                | ⬜ Not started |
+| 3     | v0.3.0  | Favorites                                            | ⬜ Not started |
+| 4     | v0.4.0  | Internet radio + Radio Browser                       | ⬜ Not started |
+| 5     | v0.5.0  | Navidrome streaming                                  | ⬜ Not started |
+| 6     | v1.0.0  | Media keys, tray, Win/Linux installers, launch       | ⬜ Not started |
 
 ---
 
@@ -53,37 +56,56 @@ locally and in CI on all three OSes.
 
 ---
 
-## Phase 1 — v0.1.0 "First play" ⬜
+## Phase 1 — v0.1.0 "First play" 🟡
 
-_The working app: a real Winamp-style player for local files._
+_The working app: a real Winamp-style player for local files, packaged as a DMG._
+
+**Delivered**
+
+- [x] Playback engine on its own thread (Symphonia decode → ring → cpal);
+      commands/events over channels — **UI never blocks**
+- [x] Gapless local playback, seek, pause/resume, volume, balance
+- [x] Main player window: marquee title, elapsed/total time, bitrate/sample
+      rate/codec, seek bar, transport, shuffle, repeat chips, queue list
+- [x] Open-files dialog + drag & drop of audio files; lofty metadata display
+- [x] Keyboard shortcuts: `Z X C V B`, Space, arrows (seek/volume)
+- [x] Tauri 2 app + plain-TS frontend; retro dark theme (CSS variables)
+- [x] Tests: engine internals + headless decode/gapless/seek suites (43 tests)
+- [x] `examples/play.rs` verified on real speakers
+- [x] CI green on macOS / Windows / Linux
+- [ ] Interactive verification pass (checklist below)
+- [ ] Screenshots in README
+- [ ] Version `0.1.0` + first **macOS `.app`/`.dmg`** (Tauri bundler, original
+      icon) — release workflow at `.github/workflows/release.yml`
+- [ ] GitHub Release `v0.1.0` (DMG + auto source archives + notes)
+
+**Definition of done**: open files → gapless playback → seek/volume/shortcuts
+all work; a DMG installs and launches the app; CI green; build commands
+documented; release published with DMG attached.
+
+**Release**: tag `v0.1.0` with source (auto) + macOS DMG
+(Windows/Linux installers arrive in v1.0.0).
+
+**Known trade-ins**: no playlist editor/library yet (v0.1.1), no EQ, no
+radio/Navidrome, no media keys, linear resampling when file rate ≠ device rate,
+unsigned DMG (Gatekeeper right-click → Open).
+
+---
+
+## Phase 1b — v0.1.1 "Library" ⬜
+
+_The rest of the original Phase 1: file management and persistence._
 
 **Scope**
 
-- Playback engine on its own thread (Symphonia decode → cpal output), commands and
-  events over channels; **UI never blocks**
-- Gapless local playback; seek, volume, balance
-- Main player window: scrolling marquee, elapsed/remaining time, bitrate/sample
-  rate, seek bar, transport, shuffle, repeat, open file
-- Playlist editor: add/remove/reorder (drag & drop), multi-select, total duration,
-  save/load **M3U, M3U8, PLS** (relative paths + both separators)
-- Folder open: recursive background scan with progress; metadata + embedded album
-  art (lofty)
+- Playlist editor: add/remove/reorder (drag & drop), multi-select, total
+  duration, save/load **M3U, M3U8, PLS** (relative paths + both separators)
+- Folder open: recursive background scan with progress; album art (lofty)
 - SQLite library persistence (rusqlite) with moved/missing file handling
-- Drag & drop files/folders onto the window
-- Keyboard shortcuts: `Z X C V B`, Space, arrows (seek/volume)
-- Tauri 2 app + plain-TS frontend; retro dark theme (CSS variables)
-- First **macOS `.app` / `.dmg` installer** (Tauri bundler, original icon)
 - Tests: M3U/PLS parsing, library store
 
-**Definition of done**: install nothing but prerequisites → open a folder → gapless
-playback → edit and save a playlist → restart the app with library intact; a DMG
-installs and launches the app; CI green on all three OSes; build commands
-documented.
-
-**Release**: GitHub repo goes **public**; tag `v0.1.0` with source + macOS DMG
-(Windows/Linux installers arrive in v1.0.0).
-
-**Known trade-ins**: no EQ/visualizer yet, no radio/Navidrome, no media keys.
+**Definition of done**: open a folder → scan completes with progress → restart
+the app with library intact → save and reload a playlist.
 
 ---
 
@@ -199,7 +221,7 @@ files, controls playback from media keys — no toolchain required.
 
 | Risk                                                | Mitigation                                                          |
 | --------------------------------------------------- | ------------------------------------------------------------------- |
-| Opus decoding gaps in Symphonia                     | Evaluate in Phase 1; fallback crate or documented limitation        |
+| Opus not supported by symphonia 0.6 as built        | Documented limitation; `symphonia-adapter-libopus` evaluated in v0.4 |
 | HLS for radio                                       | Evaluate in Phase 4; ship without it if cost is high                |
 | Gapless only meaningful for local files             | Stated per release; streams/radio are not gapless                   |
 | souvlaki media-key quirks per OS                    | Isolated behind `platform` trait; Phase 6 can swap implementations  |
