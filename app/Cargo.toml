@@ -1,0 +1,15 @@
+[package]
+name = "rea-wynamp-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Wynamp desktop application (Tauri 2, from Phase 1)"
+publish = false
+
+[[bin]]
+name = "wynamp"
+path = "src/main.rs"
+
+[dependencies]
+rea-wynamp-core = { path = "../core" }
+rea-wynamp-platform = { path = "../platform" }

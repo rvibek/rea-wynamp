@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["core", "platform", "navidrome", "radio", "app"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+# repository = added in Phase 1 when the public GitHub repo exists
+
+[workspace.dependencies]
+# Phase 0 shared dependencies. Later phases add Tauri, Symphonia, cpal,
+# rusqlite, reqwest, rustfft, keyring, souvlaki, etc.
+thiserror = "2"
+directories = "5"

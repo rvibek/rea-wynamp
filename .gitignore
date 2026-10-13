@@ -1,0 +1,23 @@
+# Rust
+/target/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Tauri
+ui/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local environment & runtime data
+.env
+*.db
+*.db-journal
+*.log

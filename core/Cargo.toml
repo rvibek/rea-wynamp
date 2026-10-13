@@ -1,0 +1,10 @@
+[package]
+name = "rea-wynamp-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core models, playback protocol, and shared errors for Wynamp"
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }

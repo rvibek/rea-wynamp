@@ -1,0 +1,11 @@
+[package]
+name = "rea-wynamp-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OS abstraction layer (paths, credentials, media controls) for Wynamp"
+publish = false
+
+[dependencies]
+rea-wynamp-core = { path = "../core" }
+directories = { workspace = true }
