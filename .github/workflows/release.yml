@@ -37,7 +37,8 @@ jobs:
           cache-dependency-path: ui/package-lock.json
 
       - name: Install frontend dependencies
-        run: npm ci --prefix ui
+        working-directory: ui
+        run: npm ci
 
       - name: Build universal .app + .dmg
         run: |
@@ -47,7 +48,7 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p dist
-          cp app/target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/
+          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg dist/
           ls -la dist
 
       - name: Publish GitHub Release
