@@ -34,6 +34,17 @@ fn md5_hex(input: &str) -> String {
         .collect()
 }
 
+/// Serde helper: treat explicit `null` like an absent field (Navidrome sends
+/// `"song": null` for empty search categories — `#[serde(default)]` alone
+/// does NOT cover that).
+fn null_to_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 fn random_salt() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -75,20 +86,21 @@ struct EmptyData {}
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ArtistsData {
+    #[serde(default, deserialize_with = "null_to_default")]
     artists: ArtistIndexList,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ArtistIndexList {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     index: Vec<ArtistIndex>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ArtistIndex {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     artist: Vec<Artist>,
 }
 
@@ -111,7 +123,7 @@ struct AlbumListData {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AlbumList {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     album: Vec<Album>,
 }
 
@@ -151,7 +163,7 @@ struct AlbumDetail {
     pub artist: String,
     #[serde(default)]
     pub cover_art: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     song: Vec<Song>,
 }
 
@@ -179,18 +191,22 @@ pub struct Song {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchData {
-    #[serde(rename = "searchResult3", default)]
+    #[serde(
+        rename = "searchResult3",
+        default,
+        deserialize_with = "null_to_default"
+    )]
     search_result: SearchResult3,
 }
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchResult3 {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     artist: Vec<Artist>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     album: Vec<Album>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     song: Vec<Song>,
 }
 
@@ -363,15 +379,19 @@ impl NavidromeClient {
         extra: &[(&str, &str)],
     ) -> Result<Envelope<T>> {
         let url = self.rest_url(method, extra);
-        let envelope: Envelope<T> = self
+        let text = self
             .http
             .get(&url)
             .send()
             .map_err(|e| NavidromeError::Network(e.to_string()))?
             .error_for_status()
             .map_err(|e| NavidromeError::Network(e.to_string()))?
-            .json()
-            .map_err(|e| NavidromeError::Parse(e.to_string()))?;
+            .text()
+            .map_err(|e| NavidromeError::Network(e.to_string()))?;
+        // Parse via text so serde's detailed message (not reqwest's generic
+        // "error decoding response body") reaches the UI.
+        let envelope: Envelope<T> = serde_json::from_str(&text)
+            .map_err(|e| NavidromeError::Parse(format!("{e} ({method})")))?;
 
         if envelope.response.status != "ok" {
             let err = envelope.response.error.unwrap_or(ApiErrorBody {
@@ -518,5 +538,68 @@ mod tests {
         assert_eq!(album.song[0].title, "Moving On");
         assert_eq!(album.song[0].duration, 273);
         assert_eq!(album.song[0].bit_rate, Some(320));
+    }
+
+    #[test]
+    fn search_tolerates_null_categories() {
+        // Real Navidrome sends explicit nulls for empty categories.
+        let json = r#"{
+          "subsonic-response": {
+            "status": "ok",
+            "version": "1.16.1",
+            "type": "navidrome",
+            "searchResult3": {
+              "artist": null,
+              "album": null,
+              "song": [
+                { "id": "s9", "title": "Moving On", "album": "End",
+                  "artist": "Explosions in the Sky", "duration": 273 }
+              ]
+            }
+          }
+        }"#;
+        let envelope: Envelope<SearchData> = serde_json::from_str(json).unwrap();
+        let r = envelope.response.data.search_result;
+        assert!(r.artist.is_empty());
+        assert!(r.album.is_empty());
+        assert_eq!(r.song.len(), 1);
+
+        // Entirely empty result: searchResult3 itself may be null.
+        let json = r#"{
+          "subsonic-response": {
+            "status": "ok",
+            "version": "1.16.1",
+            "searchResult3": null
+          }
+        }"#;
+        let envelope: Envelope<SearchData> = serde_json::from_str(json).unwrap();
+        assert!(envelope.response.data.search_result.artist.is_empty());
+        assert!(envelope.response.data.search_result.song.is_empty());
+    }
+
+    #[test]
+    fn album_detail_tolerates_null_song_list() {
+        let json = r#"{
+          "subsonic-response": {
+            "status": "ok",
+            "version": "1.16.1",
+            "album": { "id": "al-2", "name": "Empty", "song": null }
+          }
+        }"#;
+        let envelope: Envelope<AlbumData> = serde_json::from_str(json).unwrap();
+        assert!(envelope.response.data.album.song.is_empty());
+    }
+
+    #[test]
+    fn artists_tolerates_null_index() {
+        let json = r#"{
+          "subsonic-response": {
+            "status": "ok",
+            "version": "1.16.1",
+            "artists": { "index": null }
+          }
+        }"#;
+        let envelope: Envelope<ArtistsData> = serde_json::from_str(json).unwrap();
+        assert!(envelope.response.data.artists.index.is_empty());
     }
 }

@@ -672,6 +672,17 @@ function bindControls(): void {
 
   window.addEventListener("keydown", (ev) => {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    // Never hijack keys while typing in a form field (search, settings, …).
+    const target = ev.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
     switch (ev.key) {
       case " ":
         ev.preventDefault();
