@@ -292,11 +292,15 @@ mod tests {
         let missing_paths = lib.paths(true).unwrap();
         assert_eq!(missing_paths, gone);
 
-        // Re-adding a missing file clears the flag.
+        // Re-adding clears the flag until the next reality check…
         lib.upsert_track(&track("/definitely/gone/track.mp3"))
             .unwrap();
         assert!(lib.paths(true).unwrap().is_empty());
-        assert!(lib.reconcile_missing().unwrap().is_empty());
+        // …which re-marks the still-absent file (reconcile trusts the filesystem).
+        assert_eq!(
+            lib.reconcile_missing().unwrap(),
+            vec!["/definitely/gone/track.mp3".to_string()]
+        );
     }
 
     #[test]
