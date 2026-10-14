@@ -83,9 +83,11 @@ pub fn parse_m3u(text: &str, name: impl Into<String>, base_dir: &Path) -> Result
         }
 
         let path = resolve_path(line, base_dir);
-        let mut meta = TrackMeta::default();
-        meta.duration = pending_duration.take();
-        meta.title = pending_title.take();
+        let meta = TrackMeta {
+            duration: pending_duration.take(),
+            title: pending_title.take(),
+            ..TrackMeta::default()
+        };
         playlist.push(PlaylistEntry::with_meta(
             PlayableItem::LocalFile { path },
             meta,
@@ -173,12 +175,14 @@ pub fn parse_pls(text: &str, name: impl Into<String>, base_dir: &Path) -> Result
         let Some(file) = slot.file.filter(|f| !f.is_empty()) else {
             continue; // Title/Length without a file is junk — skip.
         };
-        let mut meta = TrackMeta::default();
-        meta.title = slot.title.filter(|t| !t.is_empty());
-        meta.duration = slot
-            .length
-            .filter(|&l| l > 0)
-            .map(|l| Duration::from_secs(l as u64));
+        let meta = TrackMeta {
+            title: slot.title.filter(|t| !t.is_empty()),
+            duration: slot
+                .length
+                .filter(|&l| l > 0)
+                .map(|l| Duration::from_secs(l as u64)),
+            ..TrackMeta::default()
+        };
         playlist.push(PlaylistEntry::with_meta(
             PlayableItem::LocalFile {
                 path: resolve_path(&file, base_dir),
