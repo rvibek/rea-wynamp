@@ -2717,7 +2717,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "rea-wynamp-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lofty",
  "rea-wynamp-core",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "rea-wynamp-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cpal",
  "rusqlite",
@@ -2743,14 +2743,14 @@ dependencies = [
 
 [[package]]
 name = "rea-wynamp-navidrome"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "rea-wynamp-platform"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "directories",
  "rea-wynamp-core",
@@ -2758,7 +2758,7 @@ dependencies = [
 
 [[package]]
 name = "rea-wynamp-radio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "thiserror 2.0.21",
 ]

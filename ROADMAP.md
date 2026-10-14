@@ -24,8 +24,8 @@ phase**, each independently useful, all green on CI before tagging.
 | Phase | Version | Theme                                               | Status         |
 | ----- | ------- | --------------------------------------------------- | -------------- |
 | 0     | —       | Foundation: workspace, models, traits, CI, docs      | ✅ Done        |
-| 1     | v0.1.0  | Playback engine + player UI + macOS DMG             | 🟡 In progress |
-| 1b    | v0.1.1  | Playlist editor, M3U/PLS, folder scan, SQLite library | ⬜ Not started |
+| 1     | v0.1.0  | Playback engine + player UI + macOS DMG             | ✅ Done        |
+| 1b    | v0.1.1  | Playlist editor, M3U/PLS, folder scan, SQLite library | ✅ Done        |
 | 2     | v0.2.0  | Equalizer, visualizer, panels, themes                | ⬜ Not started |
 | 3     | v0.3.0  | Favorites                                            | ⬜ Not started |
 | 4     | v0.4.0  | Internet radio + Radio Browser                       | ⬜ Not started |
@@ -56,7 +56,7 @@ locally and in CI on all three OSes.
 
 ---
 
-## Phase 1 — v0.1.0 "First play" 🟡
+## Phase 1 — v0.1.0 "First play" ✅
 
 _The working app: a real Winamp-style player for local files, packaged as a DMG._
 
@@ -73,11 +73,11 @@ _The working app: a real Winamp-style player for local files, packaged as a DMG.
 - [x] Tests: engine internals + headless decode/gapless/seek suites (43 tests)
 - [x] `examples/play.rs` verified on real speakers
 - [x] CI green on macOS / Windows / Linux
-- [ ] Interactive verification pass (checklist below)
-- [ ] Screenshots in README
-- [ ] Version `0.1.0` + first **macOS `.app`/`.dmg`** (Tauri bundler, original
+- [x] Interactive verification pass
+- [x] Screenshot in README
+- [x] Version `0.1.0` + first **macOS `.app`/`.dmg`** (Tauri bundler, original
       icon) — release workflow at `.github/workflows/release.yml`
-- [ ] GitHub Release `v0.1.0` (DMG + auto source archives + notes)
+- [x] GitHub Release `v0.1.0` (DMG + auto source archives + notes)
 
 **Definition of done**: open files → gapless playback → seek/volume/shortcuts
 all work; a DMG installs and launches the app; CI green; build commands
@@ -92,20 +92,24 @@ unsigned DMG (Gatekeeper right-click → Open).
 
 ---
 
-## Phase 1b — v0.1.1 "Library" ⬜
+## Phase 1b — v0.1.1 "Library" ✅
 
 _The rest of the original Phase 1: file management and persistence._
 
-**Scope**
+**Delivered**
 
-- Playlist editor: add/remove/reorder (drag & drop), multi-select, total
-  duration, save/load **M3U, M3U8, PLS** (relative paths + both separators)
-- Folder open: recursive background scan with progress; album art (lofty)
-- SQLite library persistence (rusqlite) with moved/missing file handling
-- Tests: M3U/PLS parsing, library store
+- [x] Playlist editor: multi-select (⌘-click) + delete, drag & drop reorder
+      (`MoveEntry` keeps playback running), total duration summary
+- [x] Save/load **M3U, M3U8, PLS** files (relative paths, both separators,
+      `#EXTINF`, out-of-order PLS indices, portable exports)
+- [x] Folder open: recursive background scan with progress events; audio-only
+      extension filter; metadata via lofty (embedded album art deferred)
+- [x] SQLite library persistence (rusqlite, WAL): tags, missing-file
+      reconcile on launch, queue session restore (no autoplay)
+- [x] Tests: M3U/PLS parsing, library store, scanner (54 core tests total)
 
 **Definition of done**: open a folder → scan completes with progress → restart
-the app with library intact → save and reload a playlist.
+the app with library intact → save and reload a playlist. ✅
 
 ---
 
