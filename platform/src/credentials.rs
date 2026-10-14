@@ -44,3 +44,37 @@ impl Credentials for StubCredentials {
         Err(Error::Unsupported(UNSUPPORTED.to_string()))
     }
 }
+
+/// OS credential vault via the `keyring` crate:
+/// macOS Keychain · Windows Credential Manager · Linux Secret Service.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct KeyringCredentials;
+
+impl Credentials for KeyringCredentials {
+    fn get(&self, service: &str, account: &str) -> Result<Option<String>> {
+        let entry = keyring::Entry::new(service, account)
+            .map_err(|e| Error::Auth(format!("keyring: {e}")))?;
+        match entry.get_password() {
+            Ok(secret) => Ok(Some(secret)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(Error::Auth(format!("keyring: {e}"))),
+        }
+    }
+
+    fn set(&self, service: &str, account: &str, secret: &str) -> Result<()> {
+        let entry = keyring::Entry::new(service, account)
+            .map_err(|e| Error::Auth(format!("keyring: {e}")))?;
+        entry
+            .set_password(secret)
+            .map_err(|e| Error::Auth(format!("keyring: {e}")))
+    }
+
+    fn delete(&self, service: &str, account: &str) -> Result<()> {
+        let entry = keyring::Entry::new(service, account)
+            .map_err(|e| Error::Auth(format!("keyring: {e}")))?;
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(Error::Auth(format!("keyring: {e}"))),
+        }
+    }
+}

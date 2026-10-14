@@ -1216,6 +1216,405 @@ function bindRadio(): void {
   renderRadioList();
 }
 
+// ── Navidrome ───────────────────────────────────────────────────────────────
+
+interface NaviServerT {
+  id: string;
+  base_url: string;
+  username: string;
+}
+interface NaviArtistT {
+  id: string;
+  name: string;
+  album_count: number;
+}
+interface NaviAlbumT {
+  id: string;
+  name: string;
+  artist: string;
+  song_count: number;
+  cover_id: string;
+}
+interface NaviSongT {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration_secs: number;
+  cover_id: string;
+  bitrate: number | null;
+}
+
+let naviServers: NaviServerT[] = [];
+let naviView: "artists" | "albums" | "songs" | "search" = "artists";
+let naviArtistId: string | null = null;
+let naviAlbumId: string | null = null;
+let naviArtists: NaviArtistT[] = [];
+let naviAlbums: NaviAlbumT[] = [];
+let naviSongs: NaviSongT[] = [];
+const coverCache = new Map<string, string>();
+/** Scrobble target of the currently playing Navidrome song, if any. */
+let lastNaviPlay: { serverId: string; songId: string; url: string } | null = null;
+
+function naviServerId(): string | null {
+  return ($("navi-server") as HTMLSelectElement).value || null;
+}
+
+async function refreshNaviServers(): Promise<void> {
+  naviServers = await invoke<NaviServerT[]>("navidrome_servers");
+  const select = $<HTMLSelectElement>("navi-server");
+  select.replaceChildren();
+  for (const srv of naviServers) {
+    const opt = document.createElement("option");
+    opt.value = srv.id;
+    opt.textContent = `${srv.id} (${srv.base_url})`;
+    select.appendChild(opt);
+  }
+  if (naviServers.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No server — add in ⚙";
+    select.appendChild(opt);
+  }
+  renderServerList();
+}
+
+function renderServerList(): void {
+  const list = $("srv-list");
+  list.replaceChildren();
+  if (naviServers.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No Navidrome servers configured";
+    li.style.color = "var(--text-dim)";
+    list.appendChild(li);
+    return;
+  }
+  for (const srv of naviServers) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "fav-meta";
+    label.textContent = `☁ ${srv.id} · ${srv.username} @ ${srv.base_url}`;
+    const test = document.createElement("button");
+    test.className = "fav-un";
+    test.textContent = "⇄";
+    test.title = "Test connection";
+    test.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      try {
+        const version = await invoke<string>("navidrome_test", {
+          serverId: srv.id,
+        });
+        toast(`✓ ${srv.id} OK (Subsonic ${version})`);
+      } catch (error) {
+        toast(`✗ ${String(error)}`, "error");
+      }
+    });
+    const del = document.createElement("button");
+    del.className = "fav-un";
+    del.textContent = "×";
+    del.title = "Remove server";
+    del.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      await invoke("navidrome_remove_server", { id: srv.id });
+      toast("Server removed");
+      await refreshNaviServers();
+    });
+    li.append(label, test, del);
+    list.appendChild(li);
+  }
+}
+
+function bindSettings(): void {
+  $("chip-settings").addEventListener("click", () => {
+    const panel = $("settings-panel");
+    panel.hidden = !panel.hidden;
+    $("chip-settings").classList.toggle("on", !panel.hidden);
+    if (!panel.hidden) void refreshNaviServers();
+  });
+  $("srv-add").addEventListener("click", () => {
+    void (async () => {
+      const id = ($("srv-id") as HTMLInputElement).value.trim();
+      const base_url = ($("srv-url") as HTMLInputElement).value.trim();
+      const username = ($("srv-user") as HTMLInputElement).value.trim();
+      const password = ($("srv-pass") as HTMLInputElement).value;
+      try {
+        await invoke("navidrome_add_server", { id, base_url, username, password });
+        ($("srv-pass") as HTMLInputElement).value = "";
+        toast("Server saved (password in keychain)");
+        await refreshNaviServers();
+      } catch (error) {
+        toast(`Save failed: ${String(error)}`, "error");
+      }
+    })();
+  });
+}
+
+async function loadCover(coverId: string): Promise<string> {
+  if (!coverId) return "";
+  const cached = coverCache.get(coverId);
+  if (cached) return cached;
+  const serverId = naviServerId();
+  if (!serverId) return "";
+  try {
+    const b64 = await invoke<string>("navidrome_cover_b64", {
+      serverId,
+      coverId,
+    });
+    if (b64) coverCache.set(coverId, b64);
+    return b64;
+  } catch {
+    return "";
+  }
+}
+
+function naviRow(
+  text: string,
+  coverId: string | null,
+  onClick: () => void,
+): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = "navi-row";
+  if (coverId) {
+    const img = document.createElement("img");
+    img.alt = "";
+    li.appendChild(img);
+    void loadCover(coverId).then((b64) => {
+      if (b64) img.src = `data:image/jpeg;base64,${b64}`;
+    });
+  }
+  const label = document.createElement("span");
+  label.className = "fav-meta";
+  label.textContent = text;
+  li.appendChild(label);
+  li.addEventListener("click", onClick);
+  return li;
+}
+
+async function playNaviSong(song: NaviSongT): Promise<void> {
+  const serverId = naviServerId();
+  if (!serverId) {
+    toast("Select a server first", "error");
+    return;
+  }
+  try {
+    const url = await invoke<string>("navidrome_stream_url", {
+      serverId,
+      songId: song.id,
+      maxBitrate: null,
+    });
+    const meta: TrackMetaT = {
+      ...emptyMeta(),
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      duration: song.duration_secs > 0 ? makeDur(song.duration_secs) : null,
+      bitrate_kbps: song.bitrate,
+    };
+    icyTitle = null;
+    await send({
+      ReplaceQueue: {
+        entries: [
+          {
+            item: { RadioStream: { url, name: song.title } },
+            meta,
+          },
+        ],
+        start_at: 0,
+      },
+    });
+    engineSynced = true;
+    lastNaviPlay = { serverId, songId: song.id, url };
+    void invoke("navidrome_scrobble", {
+      serverId,
+      songId: song.id,
+      submission: false,
+    }).catch(() => undefined);
+    render();
+  } catch (error) {
+    toast(`Play failed: ${String(error)}`, "error");
+  }
+}
+
+function starNaviSong(song: NaviSongT): void {
+  void (async () => {
+    const serverId = naviServerId();
+    if (!serverId) return;
+    try {
+      await invoke("navidrome_star", {
+        serverId,
+        songId: song.id,
+        star: true,
+      });
+      const fav: FavoriteRecordT = {
+        kind: "navidrome",
+        ref_id: `${serverId}:${song.id}`,
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        duration_ms: song.duration_secs * 1000 || null,
+      };
+      await invoke("favorites_toggle", { fav });
+      toast("♥ Starred on server + favorites");
+      await refreshFavorites();
+    } catch (error) {
+      toast(`Star failed: ${String(error)}`, "error");
+    }
+  })();
+}
+
+function renderNaviList(): void {
+  const list = $("navi-list");
+  list.replaceChildren();
+  const back = $("navi-back") as HTMLButtonElement;
+  back.disabled = naviView === "artists";
+
+  if (naviView === "artists") {
+    for (const a of naviArtists) {
+      list.appendChild(
+        naviRow(`${a.name} · ${a.album_count} albums`, null, () => {
+          naviView = "albums";
+          naviArtistId = a.id;
+          void loadNaviAlbums();
+        }),
+      );
+    }
+    if (naviArtists.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = naviServers.length ? "Loading / empty…" : "Add a server in ⚙ first";
+      li.style.color = "var(--text-dim)";
+      list.appendChild(li);
+    }
+  } else if (naviView === "albums") {
+    for (const a of naviAlbums) {
+      list.appendChild(
+        naviRow(`${a.name} · ${a.artist} · ${a.song_count} tracks`, a.cover_id, () => {
+          naviView = "songs";
+          naviAlbumId = a.id;
+          void loadNaviSongs();
+        }),
+      );
+    }
+  } else if (naviView === "songs") {
+    for (const s of naviSongs) {
+      const li = naviRow(`${s.title} · ${s.artist}`, s.cover_id, () => {
+        void playNaviSong(s);
+      });
+      const star = document.createElement("button");
+      star.className = "fav-un";
+      star.textContent = "★";
+      star.title = "Star (server + favorites)";
+      star.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        starNaviSong(s);
+      });
+      li.appendChild(star);
+      list.appendChild(li);
+    }
+  } else {
+    // search: songs first, then albums, then artists
+    const frag = document.createDocumentFragment();
+    for (const s of naviSongs) {
+      const li = naviRow(`♪ ${s.title} · ${s.artist} · ${s.album}`, s.cover_id, () => {
+        void playNaviSong(s);
+      });
+      frag.appendChild(li);
+    }
+    for (const a of naviAlbums) {
+      frag.appendChild(
+        naviRow(`💿 ${a.name} · ${a.artist}`, a.cover_id, () => {
+          naviView = "songs";
+          naviAlbumId = a.id;
+          void loadNaviSongs();
+        }),
+      );
+    }
+    for (const a of naviArtists) {
+      frag.appendChild(
+        naviRow(`👤 ${a.name}`, null, () => {
+          naviView = "albums";
+          naviArtistId = a.id;
+          void loadNaviAlbums();
+        }),
+      );
+    }
+    list.appendChild(frag);
+  }
+}
+
+async function loadNaviArtists(): Promise<void> {
+  const serverId = naviServerId();
+  if (!serverId) return;
+  naviArtists = await invoke("navidrome_artists", { serverId });
+  naviView = "artists";
+  renderNaviList();
+}
+
+async function loadNaviAlbums(): Promise<void> {
+  const serverId = naviServerId();
+  if (!serverId) return;
+  naviAlbums = await invoke("navidrome_albums", {
+    serverId,
+    artistId: naviArtistId,
+  });
+  renderNaviList();
+}
+
+async function loadNaviSongs(): Promise<void> {
+  const serverId = naviServerId();
+  if (!serverId || !naviAlbumId) return;
+  naviSongs = await invoke("navidrome_songs", { serverId, albumId: naviAlbumId });
+  renderNaviList();
+}
+
+function bindNavi(): void {
+  $("chip-navi").addEventListener("click", () => {
+    const panel = $("navi-panel");
+    panel.hidden = !panel.hidden;
+    $("chip-navi").classList.toggle("on", !panel.hidden);
+    if (!panel.hidden) {
+      void refreshNaviServers().then(() => {
+        if (naviServers.length > 0) void loadNaviArtists();
+        else renderNaviList();
+      });
+    }
+  });
+  $("navi-server").addEventListener("change", () => {
+    void loadNaviArtists().catch((e) => toast(String(e), "error"));
+  });
+  $("navi-back").addEventListener("click", () => {
+    if (naviView === "songs") {
+      naviView = "albums";
+      void loadNaviAlbums();
+    } else if (naviView === "albums" || naviView === "search") {
+      void loadNaviArtists();
+    }
+  });
+  $("navi-search").addEventListener("click", () => {
+    void (async () => {
+      const serverId = naviServerId();
+      const query = ($("navi-query") as HTMLInputElement).value.trim();
+      if (!serverId || !query) return;
+      try {
+        const res = await invoke<{
+          artists: NaviArtistT[];
+          albums: NaviAlbumT[];
+          songs: NaviSongT[];
+        }>("navidrome_search", { serverId, query });
+        naviArtists = res.artists;
+        naviAlbums = res.albums;
+        naviSongs = res.songs;
+        naviView = "search";
+        renderNaviList();
+      } catch (error) {
+        toast(`Search failed: ${String(error)}`, "error");
+      }
+    })();
+  });
+  $("navi-query").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") ($("navi-search") as HTMLElement).click();
+  });
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 
 async function boot(): Promise<void> {
@@ -1236,6 +1635,21 @@ async function boot(): Promise<void> {
     } else if ("StreamTitle" in payload) {
       icyTitle = payload.StreamTitle.title;
       render();
+    } else if ("TrackFinished" in payload) {
+      // Scrobble a completed Navidrome play (matched by stream URL).
+      if (lastNaviPlay) {
+        const finished = payload.TrackFinished.item as {
+          RadioStream?: { url: string };
+        };
+        if (finished.RadioStream?.url === lastNaviPlay.url) {
+          void invoke("navidrome_scrobble", {
+            serverId: lastNaviPlay.serverId,
+            songId: lastNaviPlay.songId,
+            submission: true,
+          }).catch(() => undefined);
+          lastNaviPlay = null;
+        }
+      }
     } else if ("TrackStarted" in payload) {
       icyTitle = null;
       toast(`▶ ${displayTitle(payload.TrackStarted)}`);
@@ -1252,6 +1666,27 @@ async function boot(): Promise<void> {
   bindViz();
   bindFavorites();
   bindRadio();
+  bindSettings();
+  bindNavi();
+
+  // Resolve Navidrome favorites ("server:song") into playable stream URLs.
+  navidromeStreamResolver = async (ref) => {
+    const sep = ref.indexOf(":");
+    if (sep < 0) return null;
+    const serverId = ref.slice(0, sep);
+    const songId = ref.slice(sep + 1);
+    try {
+      return await invoke<string>("navidrome_stream_url", {
+        serverId,
+        songId,
+        maxBitrate: null,
+      });
+    } catch (error) {
+      toast(`Cannot resolve favorite: ${String(error)}`, "error");
+      return null;
+    }
+  };
+
   await refreshFavorites().catch((e) => console.warn("favorites load failed", e));
 
   // Restore the last session queue (display only — no autoplay, engine idle).

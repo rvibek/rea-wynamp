@@ -16,8 +16,9 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use base64::Engine as _;
 use rea_wynamp_core::engine::{self, EngineConfig};
-use rea_wynamp_core::library::{FavoriteRecord, Library, TrackRecord};
+use rea_wynamp_core::library::{FavoriteRecord, Library, ServerRecord, TrackRecord};
 use rea_wynamp_core::models::{Playlist, PlaylistEntry, TrackMeta};
 use rea_wynamp_core::playback::PlayerCommand;
 use rea_wynamp_core::playlist_io::{self, PlaylistFormat};
@@ -424,6 +425,312 @@ fn radio_search(
         .collect())
 }
 
+// ── Navidrome ───────────────────────────────────────────────────────────────
+
+const ND_KEYRING_SERVICE: &str = "navidrome";
+
+#[derive(Debug, Clone, Serialize)]
+struct ServerView {
+    id: String,
+    base_url: String,
+    username: String,
+}
+
+fn nd_client(
+    state: &tauri::State<'_, LibraryState>,
+    server_id: &str,
+) -> Result<rea_wynamp_navidrome::NavidromeClient, String> {
+    let lib = library_guard(state)?;
+    let server = lib
+        .server(server_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("unknown server: {server_id}"))?;
+    let platform = rea_wynamp_platform::Platform::detect();
+    let password = platform
+        .credentials
+        .get(ND_KEYRING_SERVICE, &server.id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No stored password for this server — re-add it in Settings".to_string())?;
+    Ok(rea_wynamp_navidrome::NavidromeClient::new(
+        server.base_url,
+        server.username,
+        password,
+    ))
+}
+
+#[tauri::command]
+fn navidrome_servers(state: tauri::State<'_, LibraryState>) -> Result<Vec<ServerView>, String> {
+    let lib = library_guard(&state)?;
+    Ok(lib
+        .servers()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|s| ServerView {
+            id: s.id,
+            base_url: s.base_url,
+            username: s.username,
+        })
+        .collect())
+}
+
+/// Add/update a server; the password goes to the OS keychain.
+#[tauri::command]
+fn navidrome_add_server(
+    state: tauri::State<'_, LibraryState>,
+    id: String,
+    base_url: String,
+    username: String,
+    password: String,
+) -> Result<(), String> {
+    if id.trim().is_empty() || base_url.trim().is_empty() || username.trim().is_empty() {
+        return Err("id, url and username are required".into());
+    }
+    let platform = rea_wynamp_platform::Platform::detect();
+    platform
+        .credentials
+        .set(ND_KEYRING_SERVICE, &id, &password)
+        .map_err(|e| e.to_string())?;
+    let lib = library_guard(&state)?;
+    lib.upsert_server(&ServerRecord {
+        id,
+        base_url: base_url.trim().to_string(),
+        username,
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn navidrome_remove_server(
+    state: tauri::State<'_, LibraryState>,
+    id: String,
+) -> Result<(), String> {
+    let platform = rea_wynamp_platform::Platform::detect();
+    let _ = platform.credentials.delete(ND_KEYRING_SERVICE, &id);
+    let lib = library_guard(&state)?;
+    lib.remove_server(&id).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// "Test connection" — Subsonic ping; returns the server version.
+#[tauri::command]
+fn navidrome_test(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+) -> Result<String, String> {
+    let client = nd_client(&state, &server_id)?;
+    client.ping().map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+struct NaviArtistView {
+    id: String,
+    name: String,
+    album_count: u32,
+}
+
+#[tauri::command]
+fn navidrome_artists(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+) -> Result<Vec<NaviArtistView>, String> {
+    let client = nd_client(&state, &server_id)?;
+    Ok(client
+        .artists()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|a| NaviArtistView {
+            id: a.id,
+            name: a.name,
+            album_count: a.album_count,
+        })
+        .collect())
+}
+
+#[derive(Debug, Serialize)]
+struct NaviAlbumView {
+    id: String,
+    name: String,
+    artist: String,
+    song_count: u32,
+    cover_id: String,
+}
+
+#[tauri::command]
+fn navidrome_albums(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    artist_id: Option<String>,
+) -> Result<Vec<NaviAlbumView>, String> {
+    let client = nd_client(&state, &server_id)?;
+    Ok(client
+        .albums(artist_id.as_deref())
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|a| NaviAlbumView {
+            id: a.id,
+            name: a.name,
+            artist: a.artist,
+            song_count: a.song_count,
+            cover_id: a.cover_art,
+        })
+        .collect())
+}
+
+#[derive(Debug, Serialize)]
+struct NaviSongView {
+    id: String,
+    title: String,
+    artist: String,
+    album: String,
+    duration_secs: u32,
+    cover_id: String,
+    bitrate: Option<u32>,
+}
+
+#[tauri::command]
+fn navidrome_songs(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    album_id: String,
+) -> Result<Vec<NaviSongView>, String> {
+    let client = nd_client(&state, &server_id)?;
+    Ok(client
+        .album(&album_id)
+        .map_err(|e| e.to_string())?
+        .songs
+        .into_iter()
+        .map(|s| NaviSongView {
+            id: s.id,
+            title: s.title,
+            artist: s.artist,
+            album: s.album,
+            duration_secs: s.duration,
+            cover_id: s.cover_art,
+            bitrate: s.bit_rate,
+        })
+        .collect())
+}
+
+#[derive(Debug, Serialize)]
+struct NaviSearchView {
+    artists: Vec<NaviArtistView>,
+    albums: Vec<NaviAlbumView>,
+    songs: Vec<NaviSongView>,
+}
+
+fn navi_song_view(s: &rea_wynamp_navidrome::Song) -> NaviSongView {
+    NaviSongView {
+        id: s.id.clone(),
+        title: s.title.clone(),
+        artist: s.artist.clone(),
+        album: s.album.clone(),
+        duration_secs: s.duration,
+        cover_id: s.cover_art.clone(),
+        bitrate: s.bit_rate,
+    }
+}
+
+#[tauri::command]
+fn navidrome_search(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    query: String,
+) -> Result<NaviSearchView, String> {
+    let client = nd_client(&state, &server_id)?;
+    let results = client.search(&query).map_err(|e| e.to_string())?;
+    Ok(NaviSearchView {
+        artists: results
+            .artists
+            .iter()
+            .map(|a| NaviArtistView {
+                id: a.id.clone(),
+                name: a.name.clone(),
+                album_count: a.album_count,
+            })
+            .collect(),
+        albums: results
+            .albums
+            .iter()
+            .map(|a| NaviAlbumView {
+                id: a.id.clone(),
+                name: a.name.clone(),
+                artist: a.artist.clone(),
+                song_count: a.song_count,
+                cover_id: a.cover_art.clone(),
+            })
+            .collect(),
+        songs: results.songs.iter().map(navi_song_view).collect(),
+    })
+}
+
+/// Playback URL for one song (mp3 transcoding; `max_bitrate` in kbps).
+#[tauri::command]
+fn navidrome_stream_url(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    song_id: String,
+    max_bitrate: Option<u32>,
+) -> Result<String, String> {
+    let client = nd_client(&state, &server_id)?;
+    Ok(client.stream_url(&song_id, max_bitrate))
+}
+
+/// Cover art as a base64 data payload, cached on disk (64 px).
+#[tauri::command]
+fn navidrome_cover_b64(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    cover_id: String,
+) -> Result<String, String> {
+    if cover_id.is_empty() {
+        return Ok(String::new());
+    }
+    let platform = rea_wynamp_platform::Platform::detect();
+    let dir = platform.paths.cache_dir().join("navidrome");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let safe: String = cover_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(80)
+        .collect();
+    let file = dir.join(format!("{safe}_64.bin"));
+    let bytes = if file.exists() {
+        std::fs::read(&file).map_err(|e| e.to_string())?
+    } else {
+        let client = nd_client(&state, &server_id)?;
+        let bytes = client
+            .fetch_cover_art(&cover_id, 64)
+            .map_err(|e| e.to_string())?;
+        let _ = std::fs::write(&file, &bytes);
+        bytes
+    };
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[tauri::command]
+fn navidrome_star(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    song_id: String,
+    star: bool,
+) -> Result<(), String> {
+    let client = nd_client(&state, &server_id)?;
+    client.star(&song_id, star).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn navidrome_scrobble(
+    state: tauri::State<'_, LibraryState>,
+    server_id: String,
+    song_id: String,
+    submission: bool,
+) -> Result<(), String> {
+    let client = nd_client(&state, &server_id)?;
+    client
+        .scrobble(&song_id, submission)
+        .map_err(|e| e.to_string())
+}
+
 // ── Misc ────────────────────────────────────────────────────────────────────
 
 /// Application version shown in the UI footer/About.
@@ -491,6 +798,18 @@ fn main() {
             favorites_export,
             favorites_import,
             radio_search,
+            navidrome_servers,
+            navidrome_add_server,
+            navidrome_remove_server,
+            navidrome_test,
+            navidrome_artists,
+            navidrome_albums,
+            navidrome_songs,
+            navidrome_search,
+            navidrome_stream_url,
+            navidrome_cover_b64,
+            navidrome_star,
+            navidrome_scrobble,
             playlist_export,
             playlist_import,
             app_version,

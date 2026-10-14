@@ -625,6 +625,15 @@ body.mini .seek-knob {
   color: var(--text-dim);
 }
 
+.navi-row img {
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--inset);
+  object-fit: cover;
+}
+
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 
 .toast {

@@ -58,6 +58,8 @@
           <button class="chip" id="chip-fav" title="Favorite the current track">♡</button>
           <button class="chip" id="chip-favpanel" title="Favorites">FAV</button>
           <button class="chip" id="chip-radio" title="Internet radio">RADIO</button>
+          <button class="chip" id="chip-navi" title="Navidrome library">NAVI</button>
+          <button class="chip" id="chip-settings" title="Servers & settings">⚙</button>
         </div>
 
         <div class="sliders">
@@ -139,6 +141,27 @@
           <button class="chip" id="radio-add" title="Play a custom stream URL">PLAY URL</button>
         </div>
         <ul id="radio-list" class="queue-list fav-list"></ul>
+      </section>
+
+      <section class="fav-panel" id="settings-panel" hidden>
+        <div class="fav-head">
+          <input id="srv-id" class="radio-input" type="text" placeholder="id (e.g. home)" />
+          <input id="srv-url" class="radio-input wide" type="text" placeholder="https://music.example.com" />
+          <input id="srv-user" class="radio-input" type="text" placeholder="username" />
+          <input id="srv-pass" class="radio-input" type="password" placeholder="password" />
+          <button class="chip on" id="srv-add">ADD</button>
+        </div>
+        <ul id="srv-list" class="queue-list fav-list"></ul>
+      </section>
+
+      <section class="fav-panel" id="navi-panel" hidden>
+        <div class="fav-head">
+          <select id="navi-server" class="preset"></select>
+          <button class="chip" id="navi-back" title="Back">←</button>
+          <input id="navi-query" class="radio-input wide" type="text" placeholder="Search songs, albums, artists…" />
+          <button class="chip on" id="navi-search">SEARCH</button>
+        </div>
+        <ul id="navi-list" class="queue-list fav-list"></ul>
       </section>
 
       <section class="queue">

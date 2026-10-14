@@ -53,6 +53,14 @@ pub struct FavoriteRecord {
     pub duration_ms: Option<i64>,
 }
 
+/// One configured Navidrome server (password kept in the OS keychain).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServerRecord {
+    pub id: String,
+    pub base_url: String,
+    pub username: String,
+}
+
 impl Library {
     /// Open (creating if needed) a database file.
     pub fn open(path: &Path) -> Result<Self> {
@@ -115,6 +123,11 @@ impl Library {
                 duration_ms INTEGER,
                 added_at    INTEGER NOT NULL,
                 PRIMARY KEY (kind, ref)
+            );
+            CREATE TABLE IF NOT EXISTS navidrome_servers (
+                id       TEXT PRIMARY KEY NOT NULL,
+                base_url TEXT NOT NULL,
+                username TEXT NOT NULL
             );
             "#,
         )
@@ -357,6 +370,66 @@ impl Library {
             }
         }
         Ok(added)
+    }
+
+    // ── Navidrome servers ───────────────────────────────────────────────────
+
+    /// Insert or update a server row (password lives in the OS keychain).
+    pub fn upsert_server(&self, server: &ServerRecord) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO navidrome_servers (id, base_url, username)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(id) DO UPDATE SET
+                     base_url = excluded.base_url,
+                     username = excluded.username",
+                params![server.id, server.base_url, server.username],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn servers(&self) -> Result<Vec<ServerRecord>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, base_url, username FROM navidrome_servers ORDER BY id")
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ServerRecord {
+                    id: row.get(0)?,
+                    base_url: row.get(1)?,
+                    username: row.get(2)?,
+                })
+            })
+            .map_err(db_err)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db_err)
+    }
+
+    pub fn server(&self, id: &str) -> Result<Option<ServerRecord>> {
+        self.conn
+            .query_row(
+                "SELECT id, base_url, username FROM navidrome_servers WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(ServerRecord {
+                        id: row.get(0)?,
+                        base_url: row.get(1)?,
+                        username: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(db_err)
+    }
+
+    pub fn remove_server(&self, id: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute("DELETE FROM navidrome_servers WHERE id = ?1", params![id])
+            .map_err(db_err)?;
+        Ok(changed > 0)
     }
 }
 

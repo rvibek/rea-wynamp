@@ -18,7 +18,7 @@ mod credentials;
 mod media;
 mod paths;
 
-pub use credentials::{Credentials, StubCredentials};
+pub use credentials::{Credentials, KeyringCredentials, StubCredentials};
 pub use media::{MediaControls, NowPlaying, StubMediaControls};
 pub use paths::{Paths, SystemPaths};
 
@@ -42,8 +42,8 @@ impl Platform {
     pub fn detect() -> Self {
         Self {
             paths: Box::new(SystemPaths::detect()),
-            // v0.5.0: swap for the keyring-backed implementation.
-            credentials: Box::new(StubCredentials),
+            // v0.5.0: keyring-backed credentials (Keychain / CredMan / Secret Service).
+            credentials: Box::new(KeyringCredentials),
             // v1.0.0: swap for souvlaki-backed per-OS media controls.
             media_controls: Box::new(StubMediaControls),
         }
@@ -76,15 +76,12 @@ mod tests {
         assert_ne!(data, cache);
         assert_ne!(config, cache);
 
-        // Stub credentials: reads succeed (nothing stored), writes are explicit.
-        assert_eq!(
-            platform.credentials.get("navidrome", "srv-1").unwrap(),
-            None
-        );
-        assert!(platform
+        // Credentials: exercise the vault read path. Absent entry → None on
+        // desktop OSes; headless CI may lack a secret service — either is
+        // fine here (we only care it doesn't panic).
+        let _ = platform
             .credentials
-            .set("navidrome", "srv-1", "secret")
-            .is_err());
+            .get("navidrome-test", "definitely-absent-entry");
 
         // Stub media controls are safe no-ops.
         let mut media = platform.media_controls;
