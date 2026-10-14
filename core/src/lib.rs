@@ -8,6 +8,7 @@ pub mod engine;
 pub mod error;
 pub mod models;
 pub mod playback;
+pub mod playlist_io;
 
 pub use error::{Error, Result};
 pub use models::{
