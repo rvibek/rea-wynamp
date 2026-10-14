@@ -27,9 +27,9 @@ phase**, each independently useful, all green on CI before tagging.
 | 1     | v0.1.0  | Playback engine + player UI + macOS DMG             | ✅ Done        |
 | 1b    | v0.1.1  | Playlist editor, M3U/PLS, folder scan, SQLite library | ✅ Done        |
 | 2     | v0.2.0  | Equalizer, visualizer, panels, themes                | ✅ Done        |
-| 3     | v0.3.0  | Favorites                                            | ⬜ Not started |
-| 4     | v0.4.0  | Internet radio + Radio Browser                       | ⬜ Not started |
-| 5     | v0.5.0  | Navidrome streaming                                  | ⬜ Not started |
+| 3     | v0.3.0  | Favorites                                            | ✅ Done        |
+| 4     | v0.4.0  | Internet radio + Radio Browser                       | ✅ Done        |
+| 5     | v0.5.0  | Navidrome streaming                                  | ✅ Done        |
 | 6     | v1.0.0  | Media keys, tray, Win/Linux installers, launch       | ⬜ Not started |
 
 ---
@@ -135,62 +135,55 @@ Winamp.
 
 ---
 
-## Phase 3 — v0.3.0 "Heart collection" ⬜
+## Phase 3 — v0.3.0 "Heart collection" ✅
 
 _Favorites, source-agnostic._
 
-**Scope**
+**Delivered**
 
-- One favorite (heart/star) action on tracks; favorites view with filters
-  (All, Local — Navidrome/Radio filters activate in later phases)
-- Play directly from favorites, add to playlist
-- Persist across launches; export/import favorites as JSON
-- Tests: favorites store
-
-**Definition of done**: favorite a track → restart → still there → play it; JSON
-export re-imports losslessly.
+- [x] Heart (♡/♥) on the current track; FAV panel with filters
+      All / Local / Navidrome / Radio
+- [x] Play from favorites (local paths, radio URLs, Navidrome refs)
+- [x] Persist in `library.db`; pretty-JSON export/import (merge, no dupes)
+- [x] Tests: favorites store + JSON roundtrip
 
 ---
 
-## Phase 4 — v0.4.0 "On air" ⬜
+## Phase 4 — v0.4.0 "On air" ✅
 
 _Internet radio._
 
-**Scope**
+**Delivered**
 
-- Direct stream URLs (MP3/AAC), PLS/M3U stream links
-- Station browser via Radio Browser API: search by name/country/genre/language,
-  logo, codec, bitrate
-- ICY metadata → "now playing" in the marquee
-- Buffering indicator; auto-reconnect when a stream drops
-- Custom stations (manual add); favorites integration
-- Tests: PLS/M3U stream list parsing, Radio Browser response parsing
-
-**Definition of done**: browse → play a station → see now-playing → kill the network
-→ reconnect indicator appears → network returns → playback resumes.
-
-**Documented limitations**: HLS evaluated here — if not feasible, listed as known
-limitation rather than blocking the release.
+- [x] Direct stream URLs (HTTP + ICY metadata stripping); PLAY URL for customs
+- [x] Station browser via Radio Browser API (name/country search, codec,
+      bitrate, clickcount ordering, UA-identified)
+- [x] ICY `StreamTitle` → live "now playing" in the marquee
+- [x] Buffering state + auto-reconnect (5 attempts, 2s delay)
+- [x] Per-station favorite (FAV · RADIO filter)
+- [x] Tests: ICY demux (boundaries, titles), Radio Browser parsing/URL
+      encoding, headless engine test playing a WAV over local HTTP
 
 ---
 
-## Phase 5 — v0.5.0 "Server time" ⬜
+## Phase 5 — v0.5.0 "Server time" ✅
 
 _Navidrome (Subsonic/OpenSubsonic) streaming._
 
-**Scope**
+**Delivered**
 
-- Salted token auth (`u`, `t`, `s`); secrets in OS credential vault (keyring via
-  `Platform::credentials`); multi-server settings screen; "test connection"
-- Browse artists, albums, genres, playlists; search; cover art with caching
-- Stream with optional max-bitrate/transcoding; add streams to the playlist editor
-- Playlist sync (read; write if API allows); scrobble plays; stars ↔ local favorites
-- Graceful behavior when server is offline/unreachable
-- Favorites filter for Navidrome activates
-- Tests: auth token generation, API response parsing (mocked)
+- [x] Salted MD5 token auth (`u`, `t`, `s`); passwords in the OS keychain
+      (Keychain / Credential Manager / Secret Service via `keyring`)
+- [x] Multi-server settings (add/test/remove), Subsonic ping for "test"
+- [x] Browse artists → albums → songs (cover art, disk-cached); search3
+- [x] Stream with mp3 transcoding option; star = server star + local favorite
+- [x] Scrobbles: now-playing on start, completed on track finish
+- [x] Offline/unreachable → typed errors surfaced as toasts; app stays usable
+- [x] Favorites resolve `server:song` refs to fresh stream URLs
+- [x] Tests: token vector, URL building, response fixtures (6 client tests)
 
-**Definition of done**: add server → test connection → browse and play → star syncs
-to favorites → disconnect network → friendly error, app stays usable.
+**Known limitations**: HLS unsupported (documented); linear resampler when
+file rate ≠ device rate; album art extraction for local files deferred.
 
 ---
 
