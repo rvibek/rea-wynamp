@@ -540,6 +540,19 @@ function bindSliders(): void {
 
 // ── Buttons & keyboard ──────────────────────────────────────────────────────
 
+/** Empty the queue. The library (and session) keep their files. */
+async function clearQueue(): Promise<void> {
+  if (queue.length === 0) return;
+  queue = [];
+  selected.clear();
+  missingPaths.clear();
+  await send("ClearQueue");
+  engineSynced = true; // engine queue is now empty too
+  persistSession();
+  render();
+  toast("Queue cleared (library kept)");
+}
+
 async function deleteSelected(): Promise<void> {
   if (selected.size === 0) return;
   const indices = [...selected].sort((a, b) => b - a);
@@ -563,6 +576,7 @@ function bindControls(): void {
   $("btn-folder").addEventListener("click", () => void openFolder());
   $("btn-save").addEventListener("click", () => void savePlaylist());
   $("btn-load").addEventListener("click", () => void loadPlaylist());
+  $("btn-clear").addEventListener("click", () => void clearQueue());
 
   $("chip-shuffle").addEventListener("click", () => {
     void send({ SetShuffle: !(status?.shuffle ?? false) });
