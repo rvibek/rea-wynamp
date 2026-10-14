@@ -29,6 +29,12 @@ pub enum PlayerCommand {
     /// Remove the entry at the given index, if still present.
     RemoveAt(usize),
 
+    /// Move an entry (reorder) without interrupting the current track.
+    MoveEntry {
+        from: usize,
+        to: usize,
+    },
+
     /// Stop and empty the queue.
     ClearQueue,
 

@@ -5,6 +5,20 @@
 
 use crate::models::{PlaylistEntry, RepeatMode};
 
+/// How an index shifts when the entry at `from` is moved to `to`
+/// (remove-then-insert semantics). Shared with the engine for marker remapping.
+pub fn remap_index_after_move(index: usize, from: usize, to: usize) -> usize {
+    if index == from {
+        to
+    } else if from < index && index <= to {
+        index - 1
+    } else if to <= index && index < from {
+        index + 1
+    } else {
+        index
+    }
+}
+
 pub struct QueueState {
     entries: Vec<PlaylistEntry>,
     /// Index of the track the decoder is on (or heading to).
@@ -138,6 +152,19 @@ impl QueueState {
     /// unopenable files). Does not mutate `current`.
     pub fn advance_from(&mut self, idx: usize) -> Option<usize> {
         self.advance_forward(idx)
+    }
+
+    /// Move the entry at `from` to `to`, remapping `current` so playback
+    /// continues on the same track. Returns false when indices are invalid.
+    pub fn move_entry(&mut self, from: usize, to: usize) -> bool {
+        let len = self.entries.len();
+        if from >= len || to >= len || from == to {
+            return false;
+        }
+        let entry = self.entries.remove(from);
+        self.entries.insert(to, entry);
+        self.current = self.current.map(|c| remap_index_after_move(c, from, to));
+        true
     }
 
     fn advance_forward(&mut self, cur: usize) -> Option<usize> {
@@ -282,6 +309,47 @@ mod tests {
         let cur = q.current().expect("has current");
         let prev = q.prev_manual().expect("shuffle prev");
         assert_ne!(prev, cur);
+    }
+
+    #[test]
+    fn move_entry_remaps_current_and_order() {
+        let mut q = QueueState::new(1);
+        q.replace(entries(4), Some(2)); // current = track 2
+
+        // Move 0 → 3 (forward): old 2 becomes 1.
+        assert!(q.move_entry(0, 3));
+        assert_eq!(q.current(), Some(1));
+        assert!(matches!(
+            q.entry(3).map(|e| e.display_title()),
+            Some(t) if t == "0"
+        ));
+
+        // Move 3 → 0 (backward): current 1 becomes 2.
+        assert!(q.move_entry(3, 0));
+        assert_eq!(q.current(), Some(2));
+        assert!(matches!(
+            q.entry(0).map(|e| e.display_title()),
+            Some(t) if t == "0"
+        ));
+
+        // Invalid moves are no-ops.
+        assert!(!q.move_entry(0, 0));
+        assert!(!q.move_entry(0, 99));
+        assert!(!q.move_entry(99, 0));
+    }
+
+    #[test]
+    fn remap_index_after_move_matrix() {
+        // Forward move: 0 → 2 over a 3-element list.
+        assert_eq!(remap_index_after_move(0, 0, 2), 2); // the moved one
+        assert_eq!(remap_index_after_move(1, 0, 2), 0);
+        assert_eq!(remap_index_after_move(2, 0, 2), 1);
+        // Backward move: 2 → 0.
+        assert_eq!(remap_index_after_move(2, 2, 0), 0);
+        assert_eq!(remap_index_after_move(0, 2, 0), 1);
+        assert_eq!(remap_index_after_move(1, 2, 0), 2);
+        // Untouched region.
+        assert_eq!(remap_index_after_move(5, 0, 1), 5);
     }
 
     #[test]

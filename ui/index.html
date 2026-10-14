@@ -66,12 +66,25 @@
         <button class="btn btn-open" id="btn-open" title="Open audio files">
           OPEN…
         </button>
+        <button class="btn btn-open" id="btn-folder" title="Scan a folder into the queue and library">
+          FOLDER…
+        </button>
+        <button class="btn btn-open" id="btn-save" title="Save queue as M3U/PLS">
+          SAVE…
+        </button>
+        <button class="btn btn-open" id="btn-load" title="Load an M3U/PLS playlist">
+          LOAD…
+        </button>
       </section>
 
       <section class="queue">
         <ul id="queue-list" class="queue-list"></ul>
         <footer class="queue-hint">
-          Drop audio files anywhere · Space = play/pause · ←→ seek · ↑↓ volume
+          <span id="queue-summary">0 tracks · 0:00</span>
+          <span
+            >Drop files · ⌘-click select · ⌫ delete · drag to reorder ·
+            Space = play/pause</span
+          >
         </footer>
       </section>
 

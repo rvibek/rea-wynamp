@@ -365,12 +365,35 @@ button {
   text-shadow: 0 0 6px var(--accent-glow);
 }
 
+.queue-list li.selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 1px solid var(--accent-dim);
+}
+
+.queue-list li.missing {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.queue-list li.dragover {
+  border-top: 2px solid var(--accent);
+}
+
 .queue-hint {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
   padding: 6px 12px;
   font-size: 10px;
   color: var(--text-dim);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(0, 0, 0, 0.25);
+}
+
+#queue-summary {
+  font-family: var(--font-mono);
+  color: var(--text);
+  flex-shrink: 0;
 }
 
 /* ── Toast ─────────────────────────────────────────────────────────────── */

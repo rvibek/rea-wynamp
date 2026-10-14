@@ -34,7 +34,7 @@ use crate::playback::{PlayerCommand, PlayerEvent};
 
 use decoder::{DecodeOutcome, TrackDecoder};
 use output::{open_output, OutputShared};
-use queue::QueueState;
+use queue::{remap_index_after_move, QueueState};
 use resample::{to_stereo, LinearResampler};
 use ring::PcmRing;
 
@@ -279,6 +279,18 @@ impl Engine {
                     }
                     self.emit_queue_changed();
                     self.emit_status();
+                }
+            }
+
+            PlayerCommand::MoveEntry { from, to } => {
+                if self.queue.move_entry(from, to) {
+                    for m in self.markers.iter_mut() {
+                        m.queue_idx = remap_index_after_move(m.queue_idx, from, to);
+                    }
+                    self.decode_index = self
+                        .decode_index
+                        .map(|d| remap_index_after_move(d, from, to));
+                    self.emit_queue_changed();
                 }
             }
 
