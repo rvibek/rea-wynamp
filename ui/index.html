@@ -30,6 +30,7 @@
           <span id="track-detail">—</span>
           <span id="track-tech">-- kbps · -- kHz</span>
         </div>
+        <canvas id="viz" class="viz" width="512" height="96" hidden></canvas>
         <div class="seek" id="seek" title="Click to seek">
           <div class="seek-track">
             <div class="seek-fill" id="seek-fill"></div>
@@ -50,6 +51,8 @@
         <div class="toggles">
           <button class="chip" id="chip-shuffle" title="Shuffle">SHUF</button>
           <button class="chip" id="chip-repeat" title="Repeat: off / all / one">REP·OFF</button>
+          <button class="chip" id="chip-eq" title="Equalizer panel">EQ</button>
+          <button class="chip" id="chip-viz" title="Visualizer: off / spectrum / scope">VIZ·OFF</button>
         </div>
 
         <div class="sliders">
@@ -75,6 +78,20 @@
         <button class="btn btn-open" id="btn-load" title="Load an M3U/PLS playlist">
           LOAD…
         </button>
+      </section>
+
+      <section class="eq-panel" id="eq-panel" hidden>
+        <div class="eq-head">
+          <button class="chip on" id="chip-eq-on" title="Engage/bypass the equalizer">
+            EQ·ON
+          </button>
+          <label class="slider">
+            <span>pre</span>
+            <input type="range" id="eq-preamp" min="-12" max="12" step="0.5" value="0" />
+          </label>
+          <select id="eq-preset" class="preset" title="EQ preset"></select>
+        </div>
+        <div class="eq-bands" id="eq-bands"></div>
       </section>
 
       <section class="queue">

@@ -64,6 +64,13 @@ pub enum PlayerCommand {
     SetShuffle(bool),
     SetRepeat(RepeatMode),
 
+    /// Engage/bypass the equalizer.
+    SetEqEnabled(bool),
+    /// Set all 10 band gains in dB (other lengths are rejected with a warning).
+    SetEqGains(Vec<f32>),
+    /// Preamp gain in dB.
+    SetPreamp(f32),
+
     /// Ask the engine to emit a [`PlayerEvent::Status`] snapshot immediately.
     QueryStatus,
 

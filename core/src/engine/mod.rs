@@ -16,10 +16,12 @@
 //! itself at the output rate so tests can observe the full event stream.
 
 pub mod decoder;
+pub mod eq;
 pub mod output;
 pub mod queue;
 pub mod resample;
 pub mod ring;
+pub mod visual;
 
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
@@ -33,10 +35,12 @@ use crate::models::{normalize_volume, PlayableItem, PlaybackState, PlayerStatus,
 use crate::playback::{PlayerCommand, PlayerEvent};
 
 use decoder::{DecodeOutcome, TrackDecoder};
+use eq::EqChain;
 use output::{open_output, OutputShared};
 use queue::{remap_index_after_move, QueueState};
 use resample::{to_stereo, LinearResampler};
 use ring::PcmRing;
+use visual::VisualTap;
 
 /// Ring size basis: sized for a 96 kHz device so any real rate gets
 /// ≥ `ring_seconds` of headroom (the guard that makes gapless switching safe).
@@ -69,6 +73,8 @@ impl Default for EngineConfig {
 pub struct EngineHandle {
     tx: Sender<PlayerCommand>,
     pub events: Receiver<PlayerEvent>,
+    /// Live PCM tap for the visualizer (spectrum/scope).
+    pub visual: Arc<VisualTap>,
 }
 
 impl EngineHandle {
@@ -94,11 +100,13 @@ impl EngineHandle {
 pub fn spawn(config: EngineConfig) -> Result<EngineHandle> {
     let (cmd_tx, cmd_rx) = channel::<PlayerCommand>();
     let (evt_tx, evt_rx) = channel::<PlayerEvent>();
+    let visual = Arc::new(VisualTap::new());
+    let visual_in_engine = Arc::clone(&visual);
 
     thread::Builder::new()
         .name("wynamp-engine".into())
         .spawn(move || {
-            let mut engine = Engine::new(config, cmd_rx, evt_tx);
+            let mut engine = Engine::new(config, cmd_rx, evt_tx, visual_in_engine);
             engine.run();
         })
         .map_err(|e| Error::Output(format!("failed to spawn engine thread: {e}")))?;
@@ -106,6 +114,7 @@ pub fn spawn(config: EngineConfig) -> Result<EngineHandle> {
     Ok(EngineHandle {
         tx: cmd_tx,
         events: evt_rx,
+        visual,
     })
 }
 
@@ -134,6 +143,8 @@ struct Engine {
     out_rate: u32,
 
     queue: QueueState,
+    eq: EqChain,
+    visual: Arc<VisualTap>,
     decoder: Option<TrackDecoder>,
     decode_index: Option<usize>,
     resampler: Option<LinearResampler>,
@@ -154,6 +165,7 @@ impl Engine {
         config: EngineConfig,
         cmd_rx: Receiver<PlayerCommand>,
         event_tx: Sender<PlayerEvent>,
+        visual: Arc<VisualTap>,
     ) -> Self {
         let capacity = (RING_BASIS_RATE * config.ring_seconds) as usize * 2;
         let shared = Arc::new(OutputShared::new(Arc::new(PcmRing::new(capacity))));
@@ -179,6 +191,8 @@ impl Engine {
             .map(|d| d.as_secs() ^ (u64::from(d.subsec_nanos()) << 20))
             .unwrap_or(0x2545_F491_4F6C_DD1D);
 
+        let eq = EqChain::new(out_rate);
+
         Self {
             cmd_rx,
             event_tx,
@@ -187,6 +201,8 @@ impl Engine {
             stream,
             out_rate,
             queue: QueueState::new(seed),
+            eq,
+            visual,
             decoder: None,
             decode_index: None,
             resampler: None,
@@ -411,6 +427,26 @@ impl Engine {
             PlayerCommand::SetRepeat(r) => {
                 self.queue.set_repeat(r);
                 self.status.repeat = r;
+                self.emit_status();
+            }
+
+            PlayerCommand::SetEqEnabled(on) => {
+                self.eq.set_enabled(on);
+                self.sync_eq_status();
+                self.emit_status();
+            }
+
+            PlayerCommand::SetEqGains(gains) => {
+                if !self.eq.set_gains_db(&gains) {
+                    self.warn("Equalizer needs exactly 10 band gains".into());
+                }
+                self.sync_eq_status();
+                self.emit_status();
+            }
+
+            PlayerCommand::SetPreamp(db) => {
+                self.eq.set_preamp_db(db);
+                self.sync_eq_status();
                 self.emit_status();
             }
 
@@ -686,6 +722,10 @@ impl Engine {
                     if converted.is_empty() {
                         continue;
                     }
+                    let mut converted = converted;
+                    // EQ at the output rate, then tap the visualizer.
+                    self.eq.process(&mut converted);
+                    self.visual.push(&converted);
                     self.ensure_marker();
                     if let Some(m) = self.markers.back_mut() {
                         m.total_frames += (converted.len() / 2) as u64;
@@ -860,6 +900,12 @@ impl Engine {
     fn emit_status(&mut self) {
         self.last_status_at = Instant::now();
         let _ = self.emit(PlayerEvent::Status(self.status.clone()));
+    }
+
+    fn sync_eq_status(&mut self) {
+        self.status.eq_enabled = self.eq.enabled();
+        self.status.eq_gains_db = self.eq.gains_db();
+        self.status.preamp_db = self.eq.preamp_db();
     }
 
     fn emit_queue_changed(&mut self) {

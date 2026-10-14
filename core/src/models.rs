@@ -201,6 +201,12 @@ pub struct PlayerStatus {
     pub repeat: RepeatMode,
     pub bitrate_kbps: Option<u32>,
     pub sample_rate_hz: Option<u32>,
+    /// Equalizer engaged (flat still processes nothing, but is "on" in the UI).
+    pub eq_enabled: bool,
+    /// Per-band gains in dB (10 ISO graphic-EQ bands).
+    pub eq_gains_db: [f32; 10],
+    /// Preamp gain in dB.
+    pub preamp_db: f32,
 }
 
 impl Default for PlayerStatus {
@@ -216,6 +222,9 @@ impl Default for PlayerStatus {
             repeat: RepeatMode::Off,
             bitrate_kbps: None,
             sample_rate_hz: None,
+            eq_enabled: true,
+            eq_gains_db: [0.0; 10],
+            preamp_db: 0.0,
         }
     }
 }

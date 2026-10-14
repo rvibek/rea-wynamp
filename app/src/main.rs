@@ -13,7 +13,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use rea_wynamp_core::engine::{self, EngineConfig};
@@ -27,8 +27,11 @@ use tauri::{Emitter, Manager};
 
 // ── Shared state ────────────────────────────────────────────────────────────
 
-/// The engine's command channel, managed as Tauri state.
-struct EngineState(Sender<PlayerCommand>);
+/// The engine's command channel + visualizer tap, managed as Tauri state.
+struct EngineState {
+    tx: Sender<PlayerCommand>,
+    visual: Arc<rea_wynamp_core::engine::visual::VisualTap>,
+}
 
 /// The SQLite library (Mutex: rusqlite Connection is single-threaded).
 struct LibraryState(Mutex<Library>);
@@ -51,9 +54,30 @@ fn player_command(
     command: PlayerCommand,
 ) -> Result<(), String> {
     state
-        .0
+        .tx
         .send(command)
         .map_err(|_| "playback engine has stopped".to_string())
+}
+
+#[derive(Debug, Serialize)]
+struct VisualizerSnapshot {
+    /// Mono waveform points for the oscilloscope.
+    wave: Vec<f32>,
+    /// Normalized spectrum bars (0..=1).
+    spectrum: Vec<f32>,
+}
+
+/// Latest visualizer data: mono wave slice + spectrum bars.
+#[tauri::command]
+fn visualizer_snapshot(
+    state: tauri::State<'_, EngineState>,
+    bands: usize,
+    wave_points: usize,
+) -> Result<VisualizerSnapshot, String> {
+    let raw = state.visual.snapshot_mono(2048);
+    let spectrum = rea_wynamp_core::engine::visual::spectrum(&raw, bands.clamp(8, 64));
+    let wave = rea_wynamp_core::engine::visual::downsample(&raw, wave_points.clamp(16, 512));
+    Ok(VisualizerSnapshot { wave, spectrum })
 }
 
 /// Tracks metadata for one file, as read from its tags.
@@ -324,6 +348,7 @@ fn app_paths() -> PathsSnapshot {
 
 fn main() {
     let engine = engine::spawn(EngineConfig::default()).expect("failed to start playback engine");
+    let visual = Arc::clone(&engine.visual);
     let (cmd_tx, evt_rx) = engine.into_parts();
 
     let data_dir = rea_wynamp_platform::Platform::detect().paths.data_dir();
@@ -331,7 +356,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(EngineState(cmd_tx))
+        .manage(EngineState { tx: cmd_tx, visual })
         .manage(LibraryState(Mutex::new(library)))
         .setup(move |app| {
             // Bridge engine events to the frontend as `player:event`.
@@ -350,6 +375,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             player_command,
+            visualizer_snapshot,
             read_track_meta,
             library_status,
             library_scan_start,

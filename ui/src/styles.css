@@ -396,6 +396,73 @@ button {
   flex-shrink: 0;
 }
 
+/* ── Visualizer canvas ──────────────────────────────────────────────────── */
+
+.viz {
+  display: block;
+  width: 100%;
+  height: 56px;
+  margin-top: 10px;
+  background: #050506;
+  border: 1px solid var(--panel-edge);
+  border-radius: 2px;
+  image-rendering: pixelated;
+}
+
+/* ── Equalizer panel ────────────────────────────────────────────────────── */
+
+.eq-panel {
+  margin: 0 10px 8px;
+  padding: 8px 12px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+}
+
+.eq-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.eq-bands {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.eq-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.eq-band input[type="range"] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 18px;
+  height: 84px;
+  accent-color: var(--accent);
+}
+
+.eq-band span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.preset {
+  margin-left: auto;
+  background: var(--inset);
+  color: var(--text);
+  border: 1px solid var(--panel-edge);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 
 .toast {

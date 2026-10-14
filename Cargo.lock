@@ -2735,6 +2735,7 @@ version = "0.1.1"
 dependencies = [
  "cpal",
  "rusqlite",
+ "rustfft",
  "serde",
  "serde_json",
  "symphonia",

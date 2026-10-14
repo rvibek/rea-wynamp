@@ -45,6 +45,9 @@ interface PlayerStatusT {
   repeat: "Off" | "All" | "One";
   bitrate_kbps: number | null;
   sample_rate_hz: number | null;
+  eq_enabled: boolean;
+  eq_gains_db: number[];
+  preamp_db: number;
 }
 
 type PlayerEventT =
@@ -147,6 +150,25 @@ let draggingVolume = false;
 let draggingBalance = false;
 let scanning = false;
 
+// Equalizer + visualizer
+let eqEnabled = true;
+let eqGains: number[] = Array(10).fill(0);
+let preampDb = 0;
+let draggingEq = false;
+let vizMode: "off" | "spec" | "scope" = "off";
+
+const EQ_LABELS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
+const PRESETS: Record<string, number[]> = {
+  Flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  Rock: [5, 4, 3, 1, -1, -1, 0, 2, 3, 4],
+  Pop: [-1, 1, 3, 4, 3, 0, -1, -1, 1, 2],
+  Jazz: [3, 2, 1, 2, -1, -1, 0, 1, 3, 4],
+  Classical: [4, 3, 2, 1, -1, -1, 0, 2, 3, 4],
+  "Bass boost": [7, 6, 5, 3, 1, 0, 0, 0, 0, 0],
+  "Treble boost": [0, 0, 0, 0, 0, 1, 3, 5, 6, 7],
+  Club: [0, 0, 4, 3, 2, 2, 1, 0, 0, 0],
+};
+
 const send = (command: unknown): Promise<void> =>
   invoke("player_command", { command });
 
@@ -247,6 +269,27 @@ function render(): void {
 
   renderQueue();
   updateMarquee();
+  syncEqUi(st);
+}
+
+/** Mirror engine EQ state into the panel (unless the user is mid-drag). */
+function syncEqUi(st: PlayerStatusT | null): void {
+  if (!st || draggingEq) return;
+  const changed =
+    st.eq_enabled !== eqEnabled ||
+    st.preamp_db !== preampDb ||
+    st.eq_gains_db.some((g, i) => g !== eqGains[i]);
+  if (!changed) return;
+  eqEnabled = st.eq_enabled;
+  preampDb = st.preamp_db;
+  eqGains = [...st.eq_gains_db];
+  const onChip = $("chip-eq-on");
+  onChip.textContent = eqEnabled ? "EQ·ON" : "EQ·OFF";
+  onChip.classList.toggle("on", eqEnabled);
+  ($("eq-preamp") as HTMLInputElement).value = String(preampDb);
+  document.querySelectorAll<HTMLInputElement>("#eq-bands input").forEach((el, i) => {
+    el.value = String(eqGains[i] ?? 0);
+  });
 }
 
 function totalSeconds(): number {
@@ -718,6 +761,131 @@ function bindScanEvents(): void {
   });
 }
 
+// ── Equalizer & visualizer UI ───────────────────────────────────────────────
+
+let eqDebounce: number | undefined;
+
+function scheduleEqGains(): void {
+  window.clearTimeout(eqDebounce);
+  eqDebounce = window.setTimeout(() => {
+    void send({ SetEqGains: eqGains });
+  }, 50);
+}
+
+function buildEqPanel(): void {
+  const bandsEl = $("eq-bands");
+  bandsEl.replaceChildren();
+  EQ_LABELS.forEach((label, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "eq-band";
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "-14";
+    input.max = "14";
+    input.step = "0.5";
+    input.value = String(eqGains[i] ?? 0);
+    input.addEventListener("input", () => {
+      draggingEq = true;
+      eqGains[i] = Number(input.value);
+      scheduleEqGains();
+    });
+    input.addEventListener("change", () => {
+      draggingEq = false;
+    });
+    const cap = document.createElement("span");
+    cap.textContent = label;
+    wrap.append(input, cap);
+    bandsEl.appendChild(wrap);
+  });
+
+  const preset = $<HTMLSelectElement>("eq-preset");
+  preset.replaceChildren();
+  for (const name of Object.keys(PRESETS)) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    preset.appendChild(opt);
+  }
+  preset.addEventListener("change", () => {
+    const gains = PRESETS[preset.value];
+    if (!gains) return;
+    eqGains = [...gains];
+    bandsEl.querySelectorAll<HTMLInputElement>("input").forEach((el, i) => {
+      el.value = String(eqGains[i] ?? 0);
+    });
+    void send({ SetEqGains: eqGains });
+  });
+}
+
+function bindEqControls(): void {
+  $("chip-eq").addEventListener("click", () => {
+    const panel = $("eq-panel");
+    panel.hidden = !panel.hidden;
+    $("chip-eq").classList.toggle("on", !panel.hidden);
+  });
+  $("chip-eq-on").addEventListener("click", () => {
+    eqEnabled = !eqEnabled;
+    void send({ SetEqEnabled: eqEnabled });
+    $("chip-eq-on").textContent = eqEnabled ? "EQ·ON" : "EQ·OFF";
+    $("chip-eq-on").classList.toggle("on", eqEnabled);
+  });
+  $("eq-preamp").addEventListener("input", (ev) => {
+    preampDb = Number((ev.target as HTMLInputElement).value);
+    void send({ SetPreamp: preampDb });
+  });
+}
+
+function bindViz(): void {
+  $("chip-viz").addEventListener("click", () => {
+    vizMode = vizMode === "off" ? "spec" : vizMode === "spec" ? "scope" : "off";
+    const chip = $("chip-viz");
+    chip.textContent = `VIZ·${vizMode.toUpperCase()}`;
+    chip.classList.toggle("on", vizMode !== "off");
+    $("viz").hidden = vizMode === "off";
+  });
+
+  const canvas = $<HTMLCanvasElement>("viz");
+  const ctx = canvas.getContext("2d");
+  window.setInterval(() => {
+    if (vizMode === "off" || !ctx) return;
+    void (async () => {
+      try {
+        const snap = await invoke<{ wave: number[]; spectrum: number[] }>(
+          "visualizer_snapshot",
+          { bands: 28, wavePoints: canvas.width },
+        );
+        ctx.fillStyle = "#050506";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (vizMode === "spec") {
+          const n = snap.spectrum.length;
+          if (n === 0) return;
+          const gap = 2;
+          const barW = (canvas.width - gap * (n - 1)) / n;
+          ctx.fillStyle = "#39ff14";
+          snap.spectrum.forEach((v, i) => {
+            const h = Math.max(1, v * (canvas.height - 2));
+            ctx.fillRect(i * (barW + gap), canvas.height - h, barW, h);
+          });
+        } else {
+          ctx.strokeStyle = "#39ff14";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          const mid = canvas.height / 2;
+          snap.wave.forEach((v, i) => {
+            const x = (i / Math.max(1, snap.wave.length - 1)) * canvas.width;
+            const y = mid - v * (canvas.height / 2 - 2);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+        }
+      } catch (error) {
+        console.warn("visualizer snapshot failed", error);
+      }
+    })();
+  }, 33);
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 
 async function boot(): Promise<void> {
@@ -745,6 +913,9 @@ async function boot(): Promise<void> {
   bindSliders();
   bindControls();
   bindDrop();
+  buildEqPanel();
+  bindEqControls();
+  bindViz();
 
   // Restore the last session queue (display only — no autoplay, engine idle).
   try {
