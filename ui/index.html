@@ -57,6 +57,7 @@
           <button class="chip" id="chip-theme" title="Skin: retro / modern">SKIN·RETRO</button>
           <button class="chip" id="chip-fav" title="Favorite the current track">♡</button>
           <button class="chip" id="chip-favpanel" title="Favorites">FAV</button>
+          <button class="chip" id="chip-radio" title="Internet radio">RADIO</button>
         </div>
 
         <div class="sliders">
@@ -109,6 +110,35 @@
           <button class="chip" id="fav-import" title="Import favorites from JSON">IMPORT…</button>
         </div>
         <ul id="fav-list" class="queue-list fav-list"></ul>
+      </section>
+
+      <section class="fav-panel" id="radio-panel" hidden>
+        <div class="fav-head">
+          <input
+            id="radio-name"
+            class="radio-input"
+            type="text"
+            placeholder="Station name…"
+          />
+          <input
+            id="radio-country"
+            class="radio-input"
+            type="text"
+            placeholder="Country…"
+          />
+          <button class="chip on" id="radio-search">SEARCH</button>
+          <span class="fav-spacer"></span>
+        </div>
+        <div class="fav-head">
+          <input
+            id="radio-url"
+            class="radio-input wide"
+            type="text"
+            placeholder="…or paste a stream URL (http://…)"
+          />
+          <button class="chip" id="radio-add" title="Play a custom stream URL">PLAY URL</button>
+        </div>
+        <ul id="radio-list" class="queue-list fav-list"></ul>
       </section>
 
       <section class="queue">

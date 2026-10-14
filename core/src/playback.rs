@@ -94,6 +94,9 @@ pub enum PlayerEvent {
     /// The queue changed (enqueue/remove/clear/replace).
     QueueChanged(Vec<PlaylistEntry>),
 
+    /// Live ICY "now playing" title from an internet radio stream.
+    StreamTitle { title: String },
+
     /// Non-fatal problem (e.g. one file in the queue failed to decode);
     /// playback continues.
     Warning { message: String },

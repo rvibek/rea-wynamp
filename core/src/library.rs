@@ -486,10 +486,7 @@ mod tests {
         let json = lib.export_favorites_json().unwrap();
         let lib2 = Library::open_in_memory().unwrap();
         assert_eq!(lib2.import_favorites_json(&json).unwrap(), 1);
-        assert_eq!(
-            lib2.favorites(None).unwrap(),
-            vec![fav.clone()]
-        );
+        assert_eq!(lib2.favorites(None).unwrap(), vec![fav.clone()]);
         // Re-import merges without duplicating.
         assert_eq!(lib2.import_favorites_json(&json).unwrap(), 0);
 

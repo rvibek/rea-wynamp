@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 rea-wynamp-core = { path = "../core" }
 rea-wynamp-platform = { path = "../platform" }
+rea-wynamp-radio = { path = "../radio" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { workspace = true }

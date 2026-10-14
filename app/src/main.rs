@@ -304,7 +304,10 @@ fn favorites_list(
 
 /// Write all favorites to a JSON file.
 #[tauri::command]
-fn favorites_export(state: tauri::State<'_, LibraryState>, dest_path: String) -> Result<(), String> {
+fn favorites_export(
+    state: tauri::State<'_, LibraryState>,
+    dest_path: String,
+) -> Result<(), String> {
     let lib = library_guard(&state)?;
     let json = lib.export_favorites_json().map_err(|e| e.to_string())?;
     std::fs::write(&dest_path, json).map_err(|e| format!("cannot write {dest_path}: {e}"))
@@ -312,7 +315,10 @@ fn favorites_export(state: tauri::State<'_, LibraryState>, dest_path: String) ->
 
 /// Merge favorites from a JSON file; returns how many were new.
 #[tauri::command]
-fn favorites_import(state: tauri::State<'_, LibraryState>, src_path: String) -> Result<usize, String> {
+fn favorites_import(
+    state: tauri::State<'_, LibraryState>,
+    src_path: String,
+) -> Result<usize, String> {
     let json =
         std::fs::read_to_string(&src_path).map_err(|e| format!("cannot read {src_path}: {e}"))?;
     let lib = library_guard(&state)?;
@@ -366,6 +372,56 @@ fn playlist_import(src_path: String) -> Result<ImportedPlaylist, String> {
         name: playlist.name,
         entries: playlist.entries,
     })
+}
+
+// ── Radio ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+struct RadioStationView {
+    id: String,
+    name: String,
+    url: String,
+    country: String,
+    language: String,
+    codec: String,
+    bitrate: u32,
+    favicon: String,
+    clicks: u32,
+}
+
+/// Search Radio Browser for stations (name/country/language, AND semantics).
+#[tauri::command]
+fn radio_search(
+    name: Option<String>,
+    country: Option<String>,
+    language: Option<String>,
+) -> Result<Vec<RadioStationView>, String> {
+    let query = rea_wynamp_radio::RadioQuery {
+        name: name.filter(|s| !s.trim().is_empty()),
+        country: country.filter(|s| !s.trim().is_empty()),
+        language: language.filter(|s| !s.trim().is_empty()),
+        tag: None,
+        limit: 40,
+    };
+    let client = rea_wynamp_radio::RadioBrowserClient::default();
+    let stations = client.search(&query).map_err(|e| e.to_string())?;
+    Ok(stations
+        .into_iter()
+        .map(|s| {
+            let url = s.stream_url().to_string();
+            RadioStationView {
+                id: s.stationuuid,
+                name: s.name,
+                url,
+                country: s.country,
+                language: s.language,
+                codec: s.codec,
+                bitrate: s.bitrate,
+                favicon: s.favicon,
+                clicks: s.clickcount,
+            }
+        })
+        .collect())
 }
 
 // ── Misc ────────────────────────────────────────────────────────────────────
@@ -434,6 +490,7 @@ fn main() {
             favorites_list,
             favorites_export,
             favorites_import,
+            radio_search,
             playlist_export,
             playlist_import,
             app_version,

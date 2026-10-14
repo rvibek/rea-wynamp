@@ -12,6 +12,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { workspace = true }
 rustfft = { workspace = true }
+reqwest = { workspace = true }
 symphonia = { version = "0.6", features = [
     "mp3",
     "aac",

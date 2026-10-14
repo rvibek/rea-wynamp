@@ -11,7 +11,7 @@ use rea_wynamp_core::engine::{spawn, EngineConfig};
 use rea_wynamp_core::{PlayableItem, PlayerCommand, PlayerEvent, PlaylistEntry};
 
 /// Write a mono 16-bit PCM WAV with a 440 Hz sine.
-fn write_wav(path: &Path, seconds: f32, rate: u32) -> std::io::Result<()> {
+fn wav_bytes(seconds: f32, rate: u32) -> Vec<u8> {
     let frames = (seconds * rate as f32) as u32;
     let data_bytes = frames * 2;
     let mut buf = Vec::with_capacity(44 + data_bytes as usize);
@@ -33,7 +33,11 @@ fn write_wav(path: &Path, seconds: f32, rate: u32) -> std::io::Result<()> {
         let sample = (phase.sin() * 12_000.0) as i16;
         buf.extend_from_slice(&sample.to_le_bytes());
     }
-    std::fs::write(path, buf)
+    buf
+}
+
+fn write_wav(path: &Path, seconds: f32, rate: u32) -> std::io::Result<()> {
+    std::fs::write(path, wav_bytes(seconds, rate))
 }
 
 fn temp_dir(label: &str) -> PathBuf {
@@ -249,5 +253,62 @@ fn missing_file_emits_warning_and_stops_cleanly() {
         "should end stopped"
     );
 
+    engine.shutdown();
+}
+
+#[test]
+fn plays_radio_stream_over_http_headless() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    // Minimal HTTP server: one request → WAV body → close (stream "ends").
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = wav_bytes(0.4, 8_000);
+    let len = body.len();
+    std::thread::spawn(move || {
+        let Some(Ok(mut stream)) = listener.incoming().next() else {
+            return;
+        };
+        let mut req = Vec::new();
+        let mut byte = [0u8; 1];
+        while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+            match stream.read(&mut byte) {
+                Ok(1) => req.push(byte[0]),
+                _ => return,
+            }
+        }
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n"
+        );
+        let _ = stream.write_all(header.as_bytes());
+        let _ = stream.write_all(&body);
+        let _ = stream.flush();
+    });
+
+    let engine = spawn(EngineConfig {
+        enable_output: false,
+        reconnect_streams: false,
+        ..EngineConfig::default()
+    })
+    .unwrap();
+
+    engine
+        .send(PlayerCommand::PlayItem(PlayableItem::RadioStream {
+            url: format!("http://{addr}/stream.mp3"),
+            name: Some("Test FM".into()),
+        }))
+        .unwrap();
+
+    let events = collect_until(&engine, Duration::from_secs(15), |evs| {
+        evs.iter()
+            .any(|e| matches!(e, PlayerEvent::TrackStarted(_)))
+    });
+    assert!(
+        events.iter().any(
+            |e| matches!(e, PlayerEvent::TrackStarted(entry) if entry.display_title() == "Test FM")
+        ),
+        "radio stream should start playing; events: {events:?}"
+    );
     engine.shutdown();
 }

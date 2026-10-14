@@ -1,18 +1,20 @@
 //! Symphonia-backed decoding of one local file into stereo f32 frames.
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error as SymError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, TrackType};
-use symphonia::core::io::MediaSourceStream;
+use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::units::Time;
 use symphonia::default::{get_codecs, get_probe};
 
 use crate::error::{Error, Result};
+use crate::http_stream::{HttpStream, IcyState};
 
 /// One decoded chunk or the end of the track.
 pub enum DecodeOutcome {
@@ -25,26 +27,39 @@ pub enum DecodeOutcome {
     EndOfTrack,
 }
 
-/// A single open file: demuxer + decoder + track identity.
+/// A single open file or network stream: demuxer + decoder + track identity.
 pub struct TrackDecoder {
     format: Box<dyn FormatReader>,
     decoder: Box<dyn AudioDecoder>,
     track_id: u32,
-    /// Native sample rate of the file.
+    /// Native sample rate of the media.
     pub sample_rate: u32,
-    /// Native channel count of the file.
+    /// Native channel count of the media.
     pub channels: u16,
+    /// Present for ICY network streams; engine watches it for title updates.
+    pub icy: Option<Arc<IcyState>>,
 }
 
 impl TrackDecoder {
     pub fn open(path: &Path) -> Result<Self> {
         let file = std::fs::File::open(path)?;
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+        let mut me =
+            Self::open_source(Box::new(file), path_hint(path), path.display().to_string())?;
+        me.icy = None;
+        Ok(me)
+    }
 
-        let mut hint = Hint::new();
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            hint.with_extension(ext);
-        }
+    /// Open a network stream (internet radio). `state` is shared so the
+    /// engine can observe live ICY title updates.
+    pub fn open_http(url: &str, state: Arc<IcyState>) -> Result<Self> {
+        let source = HttpStream::open_with_state(url, Arc::clone(&state))?;
+        let mut me = Self::open_source(Box::new(source), http_hint(url), url.to_string())?;
+        me.icy = Some(state);
+        Ok(me)
+    }
+
+    fn open_source(source: Box<dyn MediaSource>, hint: Hint, label: String) -> Result<Self> {
+        let mss = MediaSourceStream::new(source, Default::default());
 
         let format = get_probe()
             .probe(
@@ -53,11 +68,11 @@ impl TrackDecoder {
                 FormatOptions::default(),
                 MetadataOptions::default(),
             )
-            .map_err(|e| Error::Decode(format!("{}: {e}", path.display())))?;
+            .map_err(|e| Error::Decode(format!("{label}: {e}")))?;
 
         let track = format
             .first_track_known_codec(TrackType::Audio)
-            .ok_or_else(|| Error::Decode(format!("{}: no audio track", path.display())))?;
+            .ok_or_else(|| Error::Decode(format!("{label}: no audio track")))?;
 
         let track_id = track.id;
         let params = track
@@ -65,13 +80,11 @@ impl TrackDecoder {
             .as_ref()
             .and_then(|p| p.audio())
             .cloned()
-            .ok_or_else(|| {
-                Error::Decode(format!("{}: missing audio parameters", path.display()))
-            })?;
+            .ok_or_else(|| Error::Decode(format!("{label}: missing audio parameters")))?;
 
         let decoder = get_codecs()
             .make_audio_decoder(&params, &AudioDecoderOptions::default())
-            .map_err(|e| Error::Decode(format!("{}: {e}", path.display())))?;
+            .map_err(|e| Error::Decode(format!("{label}: {e}")))?;
 
         let sample_rate = params.sample_rate.unwrap_or(44_100);
         let channels = params.channels.map(|c| c.count() as u16).unwrap_or(2);
@@ -82,6 +95,7 @@ impl TrackDecoder {
             track_id,
             sample_rate,
             channels,
+            icy: None,
         })
     }
 
@@ -180,4 +194,28 @@ impl TrackDecoder {
         }
         Ok(())
     }
+}
+
+fn path_hint(path: &Path) -> Hint {
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    hint
+}
+
+fn http_hint(url_str: &str) -> Hint {
+    let mut hint = Hint::new();
+    // Path extension of the URL, e.g. ".mp3" for /stream.mp3 (query stripped).
+    let path = url_str.split(['?', '#']).next().unwrap_or(url_str);
+    if let Some(ext) = path
+        .rsplit('/')
+        .next()
+        .and_then(|file| file.rsplit_once('.'))
+        .map(|(_, e)| e)
+        .filter(|e| !e.is_empty() && e.len() <= 8)
+    {
+        hint.with_extension(ext);
+    }
+    hint
 }

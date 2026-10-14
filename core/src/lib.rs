@@ -6,6 +6,7 @@
 
 pub mod engine;
 pub mod error;
+pub mod http_stream;
 pub mod library;
 pub mod models;
 pub mod playback;

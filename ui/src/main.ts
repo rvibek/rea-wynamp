@@ -54,13 +54,26 @@ interface PlayerStatusT {
   preamp_db: number;
 }
 
+interface RadioStationT {
+  id: string;
+  name: string;
+  url: string;
+  country: string;
+  language: string;
+  codec: string;
+  bitrate: number;
+  favicon: string;
+  clicks: number;
+}
+
 type PlayerEventT =
   | { Status: PlayerStatusT }
   | { QueueChanged: PlaylistEntryT[] }
   | { TrackStarted: PlaylistEntryT }
   | { TrackFinished: PlaylistEntryT }
   | { Warning: { message: string } }
-  | { Fatal: { message: string } };
+  | { Fatal: { message: string } }
+  | { StreamTitle: { title: string } };
 
 interface TrackInfoT {
   path: string;
@@ -175,6 +188,9 @@ let favorites: FavoriteRecordT[] = [];
 let favFilter: "all" | "local" | "navidrome" | "radio" = "all";
 let navidromeStreamResolver: ((ref: string) => Promise<string | null>) | null =
   null;
+/** Live ICY title from the current radio stream (cleared on track change). */
+let icyTitle: string | null = null;
+let radioStations: RadioStationT[] = [];
 
 const EQ_LABELS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
 const PRESETS: Record<string, number[]> = {
@@ -235,7 +251,10 @@ function render(): void {
   const techEl = $("track-tech");
 
   if (current) {
-    titleEl.textContent = displayTitle(current);
+    const radio = (current.item as { RadioStream?: { name: string | null } })
+      .RadioStream;
+    titleEl.textContent =
+      radio && icyTitle ? `${radio.name ?? "Radio"} — ${icyTitle}` : displayTitle(current);
     const parts = [current.meta.artist, current.meta.album].filter(Boolean);
     detailEl.textContent = parts.length ? parts.join(" — ") : "—";
     const meta = metaByPath.get(localPath(current) ?? "") ?? current.meta;
@@ -1089,6 +1108,114 @@ function bindFavorites(): void {
   });
 }
 
+// ── Internet radio ──────────────────────────────────────────────────────────
+
+function radioEntry(station: {
+  url: string;
+  name: string | null;
+}): PlaylistEntryT {
+  return {
+    item: { RadioStream: { url: station.url, name: station.name } },
+    meta: emptyMeta(),
+  };
+}
+
+async function playRadioEntry(entry: PlaylistEntryT): Promise<void> {
+  icyTitle = null;
+  await send({ ReplaceQueue: { entries: [entry], start_at: 0 } });
+  engineSynced = true;
+  render();
+}
+
+function renderRadioList(): void {
+  const list = $("radio-list");
+  list.replaceChildren();
+  if (radioStations.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "Search for stations above";
+    li.style.color = "var(--text-dim)";
+    li.style.cursor = "default";
+    list.appendChild(li);
+    return;
+  }
+  for (const st of radioStations) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "fav-meta";
+    const bits = [st.name, st.country, st.codec, st.bitrate ? `${st.bitrate}k` : null]
+      .filter(Boolean)
+      .join(" · ");
+    label.textContent = `📡 ${bits}`;
+    const star = document.createElement("button");
+    star.className = "fav-un";
+    star.textContent = "♡";
+    star.title = "Favorite this station";
+    star.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const fav: FavoriteRecordT = {
+        kind: "radio",
+        ref_id: st.url,
+        title: st.name,
+        artist: null,
+        album: null,
+        duration_ms: null,
+      };
+      const nowFav = await invoke<boolean>("favorites_toggle", { fav });
+      toast(nowFav ? "♥ Station favorited" : "Station unfavorited");
+      await refreshFavorites();
+    });
+    li.append(label, star);
+    li.title = st.url;
+    li.addEventListener("click", () => {
+      void playRadioEntry(radioEntry(st));
+    });
+    list.appendChild(li);
+  }
+}
+
+function bindRadio(): void {
+  $("chip-radio").addEventListener("click", () => {
+    const panel = $("radio-panel");
+    panel.hidden = !panel.hidden;
+    $("chip-radio").classList.toggle("on", !panel.hidden);
+  });
+
+  $("radio-search").addEventListener("click", () => {
+    void (async () => {
+      try {
+        toast("Searching stations…");
+        radioStations = await invoke<RadioStationT[]>("radio_search", {
+          name: ($("radio-name") as HTMLInputElement).value || null,
+          country: ($("radio-country") as HTMLInputElement).value || null,
+          language: null,
+        });
+        renderRadioList();
+        toast(`${radioStations.length} stations`);
+      } catch (error) {
+        toast(`Search failed: ${String(error)}`, "error");
+      }
+    })();
+  });
+
+  $("radio-url").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") ($("radio-add") as HTMLElement).click();
+  });
+  $("radio-add").addEventListener("click", () => {
+    void (async () => {
+      const url = ($("radio-url") as HTMLInputElement).value.trim();
+      if (!/^https?:\/\//.test(url)) {
+        toast("Enter an http(s) stream URL", "error");
+        return;
+      }
+      const name = url.split("/").slice(2).join("/") || "Custom stream";
+      await playRadioEntry(radioEntry({ url, name }));
+      // Remember it so it shows up in favorites if starred later.
+    })();
+  });
+
+  renderRadioList();
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 
 async function boot(): Promise<void> {
@@ -1106,7 +1233,11 @@ async function boot(): Promise<void> {
       toast(payload.Warning.message);
     } else if ("Fatal" in payload) {
       toast(payload.Fatal.message, "error");
+    } else if ("StreamTitle" in payload) {
+      icyTitle = payload.StreamTitle.title;
+      render();
     } else if ("TrackStarted" in payload) {
+      icyTitle = null;
       toast(`▶ ${displayTitle(payload.TrackStarted)}`);
     }
   });
@@ -1120,6 +1251,7 @@ async function boot(): Promise<void> {
   bindEqControls();
   bindViz();
   bindFavorites();
+  bindRadio();
   await refreshFavorites().catch((e) => console.warn("favorites load failed", e));
 
   // Restore the last session queue (display only — no autoplay, engine idle).

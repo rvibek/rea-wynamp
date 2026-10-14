@@ -51,6 +51,16 @@ const TICK: Duration = Duration::from_millis(10);
 /// Don't decode when fewer than this many stereo samples of room remain.
 const DECODE_HEADROOM: usize = 8_192;
 
+/// Pending auto-reconnect of a dropped radio stream.
+struct Reconnect {
+    idx: usize,
+    attempts: u32,
+    at: Instant,
+}
+
+const MAX_RECONNECT_ATTEMPTS: u32 = 5;
+const RECONNECT_DELAY: Duration = Duration::from_secs(2);
+
 /// Engine configuration.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -58,6 +68,8 @@ pub struct EngineConfig {
     pub enable_output: bool,
     /// Ring buffer size in seconds (at the 96 kHz basis rate).
     pub ring_seconds: f32,
+    /// Auto-reconnect dropped internet-radio streams (up to 5 attempts).
+    pub reconnect_streams: bool,
 }
 
 impl Default for EngineConfig {
@@ -65,6 +77,7 @@ impl Default for EngineConfig {
         Self {
             enable_output: true,
             ring_seconds: 0.5,
+            reconnect_streams: true,
         }
     }
 }
@@ -158,6 +171,9 @@ struct Engine {
     status: PlayerStatus,
     last_status_at: Instant,
     output_error_reported: bool,
+    reconnect_streams: bool,
+    reconnect: Option<Reconnect>,
+    icy_generation: u64,
 }
 
 impl Engine {
@@ -213,6 +229,9 @@ impl Engine {
             status: PlayerStatus::default(),
             last_status_at: Instant::now(),
             output_error_reported: false,
+            reconnect_streams: config.reconnect_streams,
+            reconnect: None,
+            icy_generation: 0,
         }
     }
 
@@ -223,6 +242,7 @@ impl Engine {
             if !self.tick() {
                 break 'outer;
             }
+            self.pump_reconnects();
 
             match self.cmd_rx.recv_timeout(TICK) {
                 Ok(cmd) => {
@@ -242,6 +262,17 @@ impl Engine {
 
         self.shared.playing.store(false, Ordering::Release);
         self.stream.take();
+    }
+
+    /// Fire due radio reconnects.
+    fn pump_reconnects(&mut self) {
+        if let Some(r) = &self.reconnect {
+            if Instant::now() >= r.at {
+                let (idx, attempts) = (r.idx, r.attempts);
+                self.reconnect = None;
+                self.fire_reconnect(idx, attempts);
+            }
+        }
     }
 
     // ── Commands ────────────────────────────────────────────────────────────
@@ -460,6 +491,7 @@ impl Engine {
     /// Hard-cut to `idx` at `pos` (flushes the audible state first).
     /// Unopenable files are skipped (bounded), matching Winamp behavior.
     fn start_track(&mut self, idx: usize, pos: Duration) {
+        self.reconnect = None;
         self.decoder = None;
         self.resampler = None;
         self.pending.clear();
@@ -523,6 +555,7 @@ impl Engine {
     }
 
     fn stop_playback(&mut self) {
+        self.reconnect = None;
         self.decoder = None;
         self.decode_index = None;
         self.resampler = None;
@@ -587,22 +620,28 @@ impl Engine {
         self.emit_status();
     }
 
-    /// Open the file at `queue[i]` and stage it as the active decoder.
+    /// Open the file (or URL) at `queue[i]` and stage it as the active decoder.
     fn open_decoder_at(&mut self, idx: usize, pos: Duration) -> Result<()> {
         let entry = self
             .queue
             .entry(idx)
             .ok_or_else(|| Error::NotFound("queue entry".into()))?;
-        let path = match &entry.item {
-            PlayableItem::LocalFile { path } => path.clone(),
+        let mut decoder = match &entry.item {
+            PlayableItem::LocalFile { path } => TrackDecoder::open(path)?,
+            PlayableItem::RadioStream { url, .. } => {
+                self.status.state = PlaybackState::Buffering;
+                TrackDecoder::open_http(
+                    url,
+                    std::sync::Arc::new(crate::http_stream::IcyState::new()),
+                )?
+            }
             _ => {
                 return Err(Error::Unsupported(
-                    "only local files are supported in v0.1.0".into(),
+                    "this source is not supported yet".into(),
                 ))
             }
         };
 
-        let mut decoder = TrackDecoder::open(&path)?;
         if pos > Duration::ZERO {
             decoder.seek(pos)?;
         }
@@ -615,6 +654,7 @@ impl Engine {
         self.status.sample_rate_hz = Some(decoder.sample_rate);
         self.status.bitrate_kbps = None;
         self.status.duration = None;
+        self.icy_generation = 0;
 
         self.decode_index = Some(idx);
         self.decoder = Some(decoder);
@@ -622,9 +662,15 @@ impl Engine {
     }
 
     /// The current decode session ended (EOF or fatal decode error): seal its
-    /// marker and open the next track *without* flushing the ring — that is
-    /// what makes the transition gapless.
+    /// marker and either reconnect (radio) or open the next track *without*
+    /// flushing the ring — that is what makes local transitions gapless.
     fn end_current_track(&mut self) {
+        let ended_idx = self.decode_index;
+        let ended_is_radio = self
+            .markers
+            .back()
+            .is_some_and(|m| matches!(m.entry.item, PlayableItem::RadioStream { .. }));
+
         if let Some(m) = self.markers.back_mut() {
             if !m.sealed {
                 m.sealed = true;
@@ -634,6 +680,18 @@ impl Engine {
         self.resampler = None;
         self.pending.clear();
         self.decode_index = None;
+
+        // Internet radio "ends" only when the connection drops — reconnect.
+        if self.reconnect_streams && ended_is_radio {
+            if let Some(idx) = ended_idx {
+                let attempts = match &self.reconnect {
+                    Some(r) if r.idx == idx => r.attempts + 1,
+                    _ => 1,
+                };
+                self.schedule_reconnect(idx, attempts);
+                return;
+            }
+        }
 
         let Some(next) = self.queue.natural_end() else {
             return; // End of queue: ring drains, tick() stops playback.
@@ -666,6 +724,50 @@ impl Engine {
             }
         }
         // Nothing playable left; drain and stop.
+    }
+
+    /// Enter the buffering state and arm a reconnect attempt.
+    fn schedule_reconnect(&mut self, idx: usize, attempts: u32) {
+        if attempts > MAX_RECONNECT_ATTEMPTS {
+            self.warn(format!(
+                "Stream unreachable after {MAX_RECONNECT_ATTEMPTS} attempts"
+            ));
+            self.reconnect = None;
+            self.stop_playback();
+            return;
+        }
+        self.reconnect = Some(Reconnect {
+            idx,
+            attempts,
+            at: Instant::now() + RECONNECT_DELAY,
+        });
+        self.shared.playing.store(false, Ordering::Release);
+        self.status.state = PlaybackState::Buffering;
+        self.status.position = Duration::ZERO;
+        self.emit_status();
+    }
+
+    /// Try to reopen a radio stream; failures re-arm the reconnect.
+    fn fire_reconnect(&mut self, idx: usize, attempts: u32) {
+        self.decoder = None;
+        self.resampler = None;
+        self.pending.clear();
+        self.markers.clear();
+        let _ = self.shared.ring.clear();
+
+        match self.open_decoder_at(idx, Duration::ZERO) {
+            Ok(()) => {
+                self.queue.set_current(Some(idx));
+                self.shared.playing.store(true, Ordering::Release);
+                self.status.state = PlaybackState::Playing;
+                self.status.current = self.queue.entry(idx).cloned();
+                self.emit_status();
+            }
+            Err(e) => {
+                self.warn(format!("Reconnect failed: {e}"));
+                self.schedule_reconnect(idx, attempts + 1);
+            }
+        }
     }
 
     // ── Decode pump ─────────────────────────────────────────────────────────
@@ -882,6 +984,20 @@ impl Engine {
                 message: "The audio device reported an error; playback may have stopped.".into(),
             }) {
                 return false;
+            }
+        }
+
+        // ICY "now playing" title updates from the active radio stream.
+        if let Some(dec) = &self.decoder {
+            if let Some(icy) = &dec.icy {
+                let gen = icy.generation();
+                if gen > self.icy_generation {
+                    self.icy_generation = gen;
+                    let title = icy.title();
+                    if !title.is_empty() && !self.emit(PlayerEvent::StreamTitle { title }) {
+                        return false;
+                    }
+                }
             }
         }
 
