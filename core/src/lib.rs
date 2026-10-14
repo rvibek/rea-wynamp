@@ -10,6 +10,7 @@ pub mod library;
 pub mod models;
 pub mod playback;
 pub mod playlist_io;
+pub mod scan;
 
 pub use error::{Error, Result};
 pub use models::{
