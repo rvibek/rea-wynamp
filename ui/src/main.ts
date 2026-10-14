@@ -1338,7 +1338,12 @@ function bindSettings(): void {
       const username = ($("srv-user") as HTMLInputElement).value.trim();
       const password = ($("srv-pass") as HTMLInputElement).value;
       try {
-        await invoke("navidrome_add_server", { id, base_url, username, password });
+        await invoke("navidrome_add_server", {
+          id,
+          baseUrl: base_url,
+          username,
+          password,
+        });
         ($("srv-pass") as HTMLInputElement).value = "";
         toast("Server saved (password in keychain)");
         await refreshNaviServers();
