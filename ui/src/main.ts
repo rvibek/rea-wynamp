@@ -28,7 +28,10 @@ interface TrackMetaT {
   codec: string | null;
 }
 
-type PlayableItemT = { LocalFile: { path: string } } | Record<string, never>;
+type PlayableItemT =
+  | { LocalFile: { path: string } }
+  | { RadioStream: { url: string; name: string | null } }
+  | { NavidromeTrack: { server_id: string; track_id: string } };
 
 interface PlaylistEntryT {
   item: PlayableItemT;
@@ -80,6 +83,15 @@ interface ImportedPlaylistT {
   entries: PlaylistEntryT[];
 }
 
+interface FavoriteRecordT {
+  kind: "local" | "navidrome" | "radio" | string;
+  ref_id: string;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  duration_ms: number | null;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const durSecs = (d: Duration | null | undefined): number =>
@@ -113,7 +125,7 @@ const emptyMeta = (): TrackMetaT => ({
   codec: null,
 });
 
-const localPath = (entry: PlaylistEntryT | null): string | null => {
+const localPath = (entry: PlaylistEntryT | null | undefined): string | null => {
   if (!entry) return null;
   const item = entry.item as { LocalFile?: { path: string } };
   return item.LocalFile?.path ?? null;
@@ -159,6 +171,10 @@ let draggingEq = false;
 let vizMode: "off" | "spec" | "scope" = "off";
 let miniMode = false;
 let theme: "retro" | "modern" = "retro";
+let favorites: FavoriteRecordT[] = [];
+let favFilter: "all" | "local" | "navidrome" | "radio" = "all";
+let navidromeStreamResolver: ((ref: string) => Promise<string | null>) | null =
+  null;
 
 const EQ_LABELS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
 const PRESETS: Record<string, number[]> = {
@@ -273,6 +289,7 @@ function render(): void {
   renderQueue();
   updateMarquee();
   syncEqUi(st);
+  renderFavChip();
 }
 
 /** Mirror engine EQ state into the panel (unless the user is mid-drag). */
@@ -906,6 +923,172 @@ function bindViz(): void {
   }, 33);
 }
 
+// ── Favorites ───────────────────────────────────────────────────────────────
+
+function isCurrentFavorited(): boolean {
+  const path = localPath(status?.current ?? null);
+  return !!path && favorites.some((f) => f.kind === "local" && f.ref_id === path);
+}
+
+async function refreshFavorites(): Promise<void> {
+  favorites = await invoke<FavoriteRecordT[]>("favorites_list", { kind: null });
+  renderFavList();
+  renderFavChip();
+}
+
+function renderFavChip(): void {
+  const chip = $("chip-fav");
+  const on = isCurrentFavorited();
+  chip.textContent = on ? "♥" : "♡";
+  chip.classList.toggle("on", on);
+}
+
+async function toggleCurrentFavorite(): Promise<void> {
+  const current = status?.current;
+  const path = localPath(current);
+  if (!current || !path) {
+    toast("Nothing to favorite");
+    return;
+  }
+  const meta = metaByPath.get(path) ?? current.meta;
+  const fav: FavoriteRecordT = {
+    kind: "local",
+    ref_id: path,
+    title: meta.title ?? displayTitle(current),
+    artist: meta.artist,
+    album: meta.album,
+    duration_ms: meta.duration ? Math.round(durSecs(meta.duration) * 1000) : null,
+  };
+  const nowFav = await invoke<boolean>("favorites_toggle", { fav });
+  toast(nowFav ? "♥ Added to favorites" : "Removed from favorites");
+  await refreshFavorites();
+}
+
+/** Build a playable entry from a favorite (navidrome resolves via the client). */
+async function favToEntry(fav: FavoriteRecordT): Promise<PlaylistEntryT | null> {
+  const meta: TrackMetaT = {
+    ...emptyMeta(),
+    title: fav.title,
+    artist: fav.artist,
+    album: fav.album,
+    duration:
+      fav.duration_ms != null
+        ? makeDur(fav.duration_ms / 1000)
+        : null,
+  };
+  if (fav.kind === "local") {
+    return { item: { LocalFile: { path: fav.ref_id } }, meta };
+  }
+  if (fav.kind === "radio") {
+    return {
+      item: { RadioStream: { url: fav.ref_id, name: fav.title } },
+      meta,
+    };
+  }
+  if (fav.kind === "navidrome" && navidromeStreamResolver) {
+    const url = await navidromeStreamResolver(fav.ref_id);
+    if (!url) return null;
+    return {
+      item: { RadioStream: { url, name: fav.title } },
+      meta,
+    };
+  }
+  return null;
+}
+
+async function playFavorite(fav: FavoriteRecordT): Promise<void> {
+  const entry = await favToEntry(fav);
+  if (!entry) {
+    toast("This favorite needs its source (Navidrome) configured", "error");
+    return;
+  }
+  await send({ ReplaceQueue: { entries: [entry], start_at: 0 } });
+  engineSynced = true;
+  render();
+}
+
+function renderFavList(): void {
+  const list = $("fav-list");
+  list.replaceChildren();
+  const shown = favorites.filter(
+    (f) => favFilter === "all" || f.kind === favFilter,
+  );
+  if (shown.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = favFilter === "all" ? "No favorites yet" : `No ${favFilter} favorites`;
+    li.style.color = "var(--text-dim)";
+    li.style.cursor = "default";
+    list.appendChild(li);
+    return;
+  }
+  for (const fav of shown) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "fav-meta";
+    const who = [fav.title ?? fav.ref_id.split("/").pop() ?? fav.ref_id, fav.artist]
+      .filter(Boolean)
+      .join(" · ");
+    label.textContent = `${fav.kind === "local" ? "♪" : fav.kind === "radio" ? "📡" : "☁"} ${who}`;
+    const un = document.createElement("button");
+    un.className = "fav-un";
+    un.textContent = "×";
+    un.title = "Remove favorite";
+    un.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      await invoke("favorites_toggle", { fav });
+      await refreshFavorites();
+    });
+    li.append(label, un);
+    li.title = fav.ref_id;
+    li.addEventListener("click", () => void playFavorite(fav));
+    list.appendChild(li);
+  }
+}
+
+function bindFavorites(): void {
+  $("chip-fav").addEventListener("click", () => void toggleCurrentFavorite());
+  $("chip-favpanel").addEventListener("click", () => {
+    const panel = $("fav-panel");
+    panel.hidden = !panel.hidden;
+    $("chip-favpanel").classList.toggle("on", !panel.hidden);
+    if (!panel.hidden) void refreshFavorites();
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-fav-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      favFilter = btn.dataset.favFilter as typeof favFilter;
+      document
+        .querySelectorAll("[data-fav-filter]")
+        .forEach((b) => b.classList.toggle("on", b === btn));
+      renderFavList();
+    });
+  });
+  $("fav-export").addEventListener("click", () => {
+    void (async () => {
+      const dest = await save({
+        filters: [{ name: "Favorites JSON", extensions: ["json"] }],
+        defaultPath: "wynamp-favorites.json",
+      });
+      if (!dest) return;
+      await invoke("favorites_export", { destPath: dest });
+      toast("Favorites exported");
+    })();
+  });
+  $("fav-import").addEventListener("click", () => {
+    void (async () => {
+      const src = await open({
+        multiple: false,
+        filters: [{ name: "Favorites JSON", extensions: ["json"] }],
+      });
+      if (!src) return;
+      const added = await invoke<number>("favorites_import", {
+        srcPath: Array.isArray(src) ? src[0] : src,
+      });
+      toast(`Imported ${added} new favorite${added === 1 ? "" : "s"}`);
+      await refreshFavorites();
+    })();
+  });
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 
 async function boot(): Promise<void> {
@@ -936,6 +1119,8 @@ async function boot(): Promise<void> {
   buildEqPanel();
   bindEqControls();
   bindViz();
+  bindFavorites();
+  await refreshFavorites().catch((e) => console.warn("favorites load failed", e));
 
   // Restore the last session queue (display only — no autoplay, engine idle).
   try {

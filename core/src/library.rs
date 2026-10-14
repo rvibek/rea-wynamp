@@ -40,6 +40,19 @@ pub struct Library {
     conn: Connection,
 }
 
+/// One favorited item. `kind` + `ref_id` are the identity:
+/// `local` → filesystem path · `radio` → stream URL ·
+/// `navidrome` → `{server_id}:{track_id}`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FavoriteRecord {
+    pub kind: String,
+    pub ref_id: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub duration_ms: Option<i64>,
+}
+
 impl Library {
     /// Open (creating if needed) a database file.
     pub fn open(path: &Path) -> Result<Self> {
@@ -92,6 +105,16 @@ impl Library {
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY NOT NULL,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS favorites (
+                kind        TEXT NOT NULL,
+                ref         TEXT NOT NULL,
+                title       TEXT,
+                artist      TEXT,
+                album       TEXT,
+                duration_ms INTEGER,
+                added_at    INTEGER NOT NULL,
+                PRIMARY KEY (kind, ref)
             );
             "#,
         )
@@ -226,6 +249,126 @@ impl Library {
             .map_err(db_err)?;
         Ok(found.is_some())
     }
+
+    // ── Favorites ───────────────────────────────────────────────────────────
+
+    /// Add a favorite; returns false (and does nothing) if already present.
+    pub fn add_favorite(&self, fav: &FavoriteRecord) -> Result<bool> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let changed = self
+            .conn
+            .execute(
+                "INSERT OR IGNORE INTO favorites
+                     (kind, ref, title, artist, album, duration_ms, added_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    fav.kind,
+                    fav.ref_id,
+                    fav.title,
+                    fav.artist,
+                    fav.album,
+                    fav.duration_ms,
+                    now
+                ],
+            )
+            .map_err(db_err)?;
+        Ok(changed > 0)
+    }
+
+    /// Remove a favorite; returns false when it wasn't there.
+    pub fn remove_favorite(&self, kind: &str, ref_id: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM favorites WHERE kind = ?1 AND ref = ?2",
+                params![kind, ref_id],
+            )
+            .map_err(db_err)?;
+        Ok(changed > 0)
+    }
+
+    pub fn is_favorite(&self, kind: &str, ref_id: &str) -> Result<bool> {
+        let found: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM favorites WHERE kind = ?1 AND ref = ?2",
+                params![kind, ref_id],
+                |_| Ok(1),
+            )
+            .optional()
+            .map_err(db_err)?;
+        Ok(found.is_some())
+    }
+
+    /// All favorites, newest first; `kind` filters (`None` = all).
+    pub fn favorites(&self, kind: Option<&str>) -> Result<Vec<FavoriteRecord>> {
+        let mut out = Vec::new();
+        match kind {
+            Some(kind) => {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT kind, ref, title, artist, album, duration_ms
+                         FROM favorites WHERE kind = ?1 ORDER BY added_at DESC",
+                    )
+                    .map_err(db_err)?;
+                let rows = stmt
+                    .query_map(params![kind], favorite_from_row)
+                    .map_err(db_err)?;
+                for row in rows {
+                    out.push(row.map_err(db_err)?);
+                }
+            }
+            None => {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT kind, ref, title, artist, album, duration_ms
+                         FROM favorites ORDER BY added_at DESC",
+                    )
+                    .map_err(db_err)?;
+                let rows = stmt.query_map([], favorite_from_row).map_err(db_err)?;
+                for row in rows {
+                    out.push(row.map_err(db_err)?);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Serialize all favorites to pretty JSON (export file format).
+    pub fn export_favorites_json(&self) -> Result<String> {
+        let favs = self.favorites(None)?;
+        serde_json::to_string_pretty(&favs)
+            .map_err(|e| Error::Database(format!("favorites encode: {e}")))
+    }
+
+    /// Merge favorites from JSON (export format); returns how many were new.
+    pub fn import_favorites_json(&self, json: &str) -> Result<usize> {
+        let favs: Vec<FavoriteRecord> = serde_json::from_str(json)
+            .map_err(|e| Error::Database(format!("favorites decode: {e}")))?;
+        let mut added = 0;
+        for fav in &favs {
+            if self.add_favorite(fav)? {
+                added += 1;
+            }
+        }
+        Ok(added)
+    }
+}
+
+fn favorite_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FavoriteRecord> {
+    Ok(FavoriteRecord {
+        kind: row.get(0)?,
+        ref_id: row.get(1)?,
+        title: row.get(2)?,
+        artist: row.get(3)?,
+        album: row.get(4)?,
+        duration_ms: row.get(5)?,
+    })
 }
 
 fn db_err(err: rusqlite::Error) -> Error {
@@ -315,6 +458,44 @@ mod tests {
         // Overwrite.
         lib.save_session(&[]).unwrap();
         assert!(lib.load_session().unwrap().is_empty());
+    }
+
+    #[test]
+    fn favorites_toggle_list_and_json_roundtrip() {
+        let lib = Library::open_in_memory().unwrap();
+        let fav = FavoriteRecord {
+            kind: "local".into(),
+            ref_id: "/m/song.mp3".into(),
+            title: Some("Song".into()),
+            artist: Some("Artist".into()),
+            album: None,
+            duration_ms: Some(180_000),
+        };
+
+        assert!(lib.add_favorite(&fav).unwrap());
+        assert!(!lib.add_favorite(&fav).unwrap(), "second add is a no-op");
+        assert!(lib.is_favorite("local", "/m/song.mp3").unwrap());
+        assert!(lib
+            .favorites(Some("local"))
+            .unwrap()
+            .iter()
+            .any(|f| f.ref_id == "/m/song.mp3"));
+        assert!(lib.favorites(Some("radio")).unwrap().is_empty());
+
+        // Export → fresh DB → import → identical set.
+        let json = lib.export_favorites_json().unwrap();
+        let lib2 = Library::open_in_memory().unwrap();
+        assert_eq!(lib2.import_favorites_json(&json).unwrap(), 1);
+        assert_eq!(
+            lib2.favorites(None).unwrap(),
+            vec![fav.clone()]
+        );
+        // Re-import merges without duplicating.
+        assert_eq!(lib2.import_favorites_json(&json).unwrap(), 0);
+
+        assert!(lib.remove_favorite("local", "/m/song.mp3").unwrap());
+        assert!(!lib.remove_favorite("local", "/m/song.mp3").unwrap());
+        assert!(!lib.is_favorite("local", "/m/song.mp3").unwrap());
     }
 
     #[test]

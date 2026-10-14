@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use rea_wynamp_core::engine::{self, EngineConfig};
-use rea_wynamp_core::library::{Library, TrackRecord};
+use rea_wynamp_core::library::{FavoriteRecord, Library, TrackRecord};
 use rea_wynamp_core::models::{Playlist, PlaylistEntry, TrackMeta};
 use rea_wynamp_core::playback::PlayerCommand;
 use rea_wynamp_core::playlist_io::{self, PlaylistFormat};
@@ -270,6 +270,55 @@ fn library_session_load(state: tauri::State<'_, LibraryState>) -> Result<Vec<Str
     lib.load_session().map_err(|e| e.to_string())
 }
 
+// ── Favorites ───────────────────────────────────────────────────────────────
+
+/// Add/remove a favorite; returns `true` when it is now a favorite.
+#[tauri::command]
+fn favorites_toggle(
+    state: tauri::State<'_, LibraryState>,
+    fav: FavoriteRecord,
+) -> Result<bool, String> {
+    let lib = library_guard(&state)?;
+    if lib
+        .is_favorite(&fav.kind, &fav.ref_id)
+        .map_err(|e| e.to_string())?
+    {
+        lib.remove_favorite(&fav.kind, &fav.ref_id)
+            .map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        lib.add_favorite(&fav).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+/// List favorites, newest first; `kind` filters (null = all).
+#[tauri::command]
+fn favorites_list(
+    state: tauri::State<'_, LibraryState>,
+    kind: Option<String>,
+) -> Result<Vec<FavoriteRecord>, String> {
+    let lib = library_guard(&state)?;
+    lib.favorites(kind.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Write all favorites to a JSON file.
+#[tauri::command]
+fn favorites_export(state: tauri::State<'_, LibraryState>, dest_path: String) -> Result<(), String> {
+    let lib = library_guard(&state)?;
+    let json = lib.export_favorites_json().map_err(|e| e.to_string())?;
+    std::fs::write(&dest_path, json).map_err(|e| format!("cannot write {dest_path}: {e}"))
+}
+
+/// Merge favorites from a JSON file; returns how many were new.
+#[tauri::command]
+fn favorites_import(state: tauri::State<'_, LibraryState>, src_path: String) -> Result<usize, String> {
+    let json =
+        std::fs::read_to_string(&src_path).map_err(|e| format!("cannot read {src_path}: {e}"))?;
+    let lib = library_guard(&state)?;
+    lib.import_favorites_json(&json).map_err(|e| e.to_string())
+}
+
 // ── Playlist files ──────────────────────────────────────────────────────────
 
 /// Write the given entries to a playlist file (`.m3u`, `.m3u8`, `.pls`).
@@ -381,6 +430,10 @@ fn main() {
             library_scan_start,
             library_save_session,
             library_session_load,
+            favorites_toggle,
+            favorites_list,
+            favorites_export,
+            favorites_import,
             playlist_export,
             playlist_import,
             app_version,

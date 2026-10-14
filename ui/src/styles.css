@@ -548,6 +548,64 @@ body.mini .seek-knob {
   top: 0;
 }
 
+/* ── Favorites panel ────────────────────────────────────────────────────── */
+
+.fav-panel {
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  max-height: 180px;
+  display: flex;
+  flex-direction: column;
+}
+
+.fav-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.fav-spacer {
+  flex: 1;
+}
+
+.fav-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.fav-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fav-list li .fav-meta {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fav-list li .fav-un {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 0 4px;
+}
+
+.fav-list li .fav-un:hover {
+  color: var(--danger);
+}
+
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 
 .toast {
