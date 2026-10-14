@@ -26,7 +26,7 @@ phase**, each independently useful, all green on CI before tagging.
 | 0     | —       | Foundation: workspace, models, traits, CI, docs      | ✅ Done        |
 | 1     | v0.1.0  | Playback engine + player UI + macOS DMG             | ✅ Done        |
 | 1b    | v0.1.1  | Playlist editor, M3U/PLS, folder scan, SQLite library | ✅ Done        |
-| 2     | v0.2.0  | Equalizer, visualizer, panels, themes                | ⬜ Not started |
+| 2     | v0.2.0  | Equalizer, visualizer, panels, themes                | ✅ Done        |
 | 3     | v0.3.0  | Favorites                                            | ⬜ Not started |
 | 4     | v0.4.0  | Internet radio + Radio Browser                       | ⬜ Not started |
 | 5     | v0.5.0  | Navidrome streaming                                  | ⬜ Not started |
@@ -113,17 +113,21 @@ the app with library intact → save and reload a playlist. ✅
 
 ---
 
-## Phase 2 — v0.2.0 "Face the music" ⬜
+## Phase 2 — v0.2.0 "Face the music" ✅
 
 _The Winamp look and feel._
 
-**Scope**
+**Delivered**
 
-- 10-band graphic equalizer (biquad filters) + preamp, presets, on/off
-- Spectrum analyzer + oscilloscope (rustfft), toggle
-- Panel show/hide & stacking, compact "mini mode"
-- Modern theme option alongside retro default (both via CSS variables)
-- Tests: EQ filter math
+- [x] 10-band graphic equalizer (RBJ peaking biquads, Q=1.0, ISO 31 Hz–16 kHz)
+      + preamp ±12 dB, ON/OFF bypass, 8 presets
+- [x] Spectrum analyzer + oscilloscope (rustfft), VIZ chip cycles off/scope/spec;
+      tap is post-EQ so the EQ visibly shapes the display
+- [x] Panel show/hide (EQ panel, visualizer canvas) + compact **mini mode**
+      (window resizes, queue/EQ/file rows collapse)
+- [x] Modern theme alongside retro default (same structure, CSS variables;
+      SKIN chip cycles)
+- [x] Tests: EQ filter math, spectrum peak placement, visualizer tap bounds
 
 **Definition of done**: EQ audibly shapes output and toggles cleanly; visualizer
 runs at smooth frame rate without stuttering audio; panels behave like classic

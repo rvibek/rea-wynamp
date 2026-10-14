@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
 
@@ -156,6 +157,8 @@ let eqGains: number[] = Array(10).fill(0);
 let preampDb = 0;
 let draggingEq = false;
 let vizMode: "off" | "spec" | "scope" = "off";
+let miniMode = false;
+let theme: "retro" | "modern" = "retro";
 
 const EQ_LABELS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
 const PRESETS: Record<string, number[]> = {
@@ -836,6 +839,23 @@ function bindEqControls(): void {
 }
 
 function bindViz(): void {
+  $("chip-mini").addEventListener("click", () => {
+    miniMode = !miniMode;
+    document.body.classList.toggle("mini", miniMode);
+    $("chip-mini").classList.toggle("on", miniMode);
+    const win = getCurrentWindow();
+    const size = miniMode ? new LogicalSize(560, 250) : new LogicalSize(560, 520);
+    void win.setSize(size).catch((e) => console.warn("resize failed", e));
+  });
+
+  $("chip-theme").addEventListener("click", () => {
+    theme = theme === "retro" ? "modern" : "retro";
+    document.documentElement.dataset.theme = theme;
+    const chip = $("chip-theme");
+    chip.textContent = `SKIN·${theme.toUpperCase()}`;
+    chip.classList.toggle("on", theme === "modern");
+  });
+
   $("chip-viz").addEventListener("click", () => {
     vizMode = vizMode === "off" ? "spec" : vizMode === "spec" ? "scope" : "off";
     const chip = $("chip-viz");

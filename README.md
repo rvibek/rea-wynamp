@@ -17,6 +17,8 @@ Wynamp is free and open source (MIT OR Apache-2.0), uses original visual assets 
 
 ![Wynamp playing a track — phosphor-green retro player UI](docs/screenshots/wynamp-player.png)
 
+![Wynamp with spectrum analyzer and 10-band equalizer](docs/screenshots/wynamp-eq-spectrum.png)
+
 ## Planned releases
 
 | Release | Theme                                              |

@@ -463,6 +463,91 @@ button {
   font-size: 11px;
 }
 
+/* ── Modern skin (same structure, different variables) ─────────────────── */
+
+:root,
+:root[data-theme="modern"] {
+  --danger: #e5484d;
+  --font-ui: "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="modern"] {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel-hi: #f6f7fa;
+  --panel-edge: #c9ccd4;
+  --inset: #e4e7ed;
+  --text: #1b1d24;
+  --text-dim: #666c7c;
+  --accent: #2f6df6;
+  --accent-dim: #1d4ed8;
+  --accent-glow: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+:root[data-theme="modern"] .titlebar {
+  border-bottom-color: var(--panel-edge);
+}
+
+:root[data-theme="modern"] .display {
+  box-shadow: 0 1px 3px rgba(20, 24, 40, 0.12);
+}
+
+:root[data-theme="modern"] .queue-list li.current {
+  text-shadow: none;
+  font-weight: 600;
+}
+
+:root[data-theme="modern"] .marquee span {
+  text-shadow: none;
+}
+
+:root[data-theme="modern"] .clock {
+  text-shadow: none;
+}
+
+/* ── Mini mode ──────────────────────────────────────────────────────────── */
+
+body.mini .queue,
+body.mini .eq-panel,
+body.mini .sliders,
+body.mini #btn-open,
+body.mini #btn-folder,
+body.mini #btn-save,
+body.mini #btn-load {
+  display: none;
+}
+
+body.mini .titlebar {
+  padding: 4px 10px;
+}
+
+body.mini .display {
+  margin: 6px 8px 0;
+  padding: 6px 10px 8px;
+}
+
+body.mini .viz {
+  height: 30px;
+  margin-top: 6px;
+}
+
+body.mini .controls {
+  gap: 10px;
+  padding: 6px 8px;
+  flex-wrap: nowrap;
+}
+
+body.mini .seek {
+  margin-top: 6px;
+  height: 10px;
+}
+
+body.mini .seek-knob {
+  height: 9px;
+  top: 0;
+}
+
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 
 .toast {
